@@ -85,6 +85,11 @@ export default function ChatScreen({ route, navigation }) {
     const [selectedImage, setSelectedImage] = useState(null);
 
     const [selectedMessageId, setSelectedMessageId] = useState(null);
+    const [replyToMessage, setReplyToMessage] = useState(null);
+    const [editingMessage, setEditingMessage] = useState(null);
+    const [editDraft, setEditDraft] = useState('');
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [searchText, setSearchText] = useState('');
 
     const stompClient = useRef(null);
     const flatListRef = useRef(null);
@@ -95,7 +100,10 @@ export default function ChatScreen({ route, navigation }) {
         navigation.setOptions({
             title: friendUsername || (isChannelMode ? "Kênh Chat" : `Chat`),
             headerStyle: { backgroundColor: '#2f3136' },
-            headerTintColor: '#dcddde'
+            headerTintColor: '#dcddde',
+            headerRight: () => <TouchableOpacity onPress={() => setSearchOpen(value => !value)} style={{ paddingHorizontal: 8 }}>
+                <Ionicons name="search" size={21} color="#dcddde" />
+            </TouchableOpacity>
         });
         loadHistory();
         connectToWebSocket();
@@ -118,10 +126,21 @@ export default function ChatScreen({ route, navigation }) {
     //     }
     // }, [messages]);
     const appendMessage = (newMsg) => setMessages((prev) => {
+        if (prev.some(message => String(message.id) === String(newMsg.id))) return prev;
         const list = [...prev, newMsg];
         // Sắp xếp theo ID để đảm bảo thứ tự đúng
         return list.sort((a, b) => (b.id || 0) - (a.id || 0));
     });
+
+    const applyMessageEvent = (event) => {
+        if (event.action === 'DELETE') {
+            setMessages(previous => previous.filter(message => String(message.id) !== String(event.id)));
+        } else if (event.action === 'UPDATE' && event.message) {
+            setMessages(previous => previous.map(message => String(message.id) === String(event.message.id) ? event.message : message));
+        } else {
+            appendMessage(event);
+        }
+    };
 
     const startTimer = () => {
         setRecordingDuration(0);
@@ -160,8 +179,9 @@ export default function ChatScreen({ route, navigation }) {
             const topic = isChannelMode ? `/topic/channel/${channelId}` : `/topic/private/${myId}`;
             stompClient.current.subscribe(topic, (msg) => {
                 const newMessage = JSON.parse(msg.body);
-                // Logic lọc tin nhắn để tránh hiện tin của người khác
-                if (isChannelMode) {
+                if (newMessage.action) {
+                    applyMessageEvent(newMessage);
+                } else if (isChannelMode) {
                     appendMessage(newMessage);
                 } else {
                     if (Number(newMessage.senderId) === Number(friendId) || Number(newMessage.senderId) === Number(myId)) {
@@ -177,11 +197,14 @@ export default function ChatScreen({ route, navigation }) {
         let payload = { content, type: msgType, duration: duration }; // Thêm duration vào payload
 
         if (isChannelMode) {
+            payload = { ...payload, replyToId: replyToMessage?.id || null };
             payload = { ...payload, sender: { id: myId }, channel: { id: channelId } };
             stompClient.current.send("/app/channel-message", {}, JSON.stringify(payload));
+            setReplyToMessage(null);
         } else {
-            payload = { ...payload, senderId: myId, receiverId: friendId };
+            payload = { ...payload, senderId: myId, receiverId: friendId, replyToId: replyToMessage?.id || null };
             stompClient.current.send("/app/private-message", {}, JSON.stringify(payload));
+            setReplyToMessage(null);
         }
         if (msgType === 'TEXT') setInput('');
     };
@@ -193,26 +216,41 @@ export default function ChatScreen({ route, navigation }) {
         }
     };
     const handleLongPress = (item) => {
-        // Chỉ cho phép Copy tin nhắn dạng TEXT
-        if (item.type !== 'TEXT') return;
-
-        // Tắt chế độ chi tiết nếu đang mở
         setSelectedMessageId(null);
+        const senderId = item.senderId || item.sender?.id;
+        const isMine = String(senderId) === String(myId);
+        const actions = [{ text: 'Đóng', style: 'cancel' }];
+        if (item.type === 'TEXT') actions.unshift({ text: 'Sao chép', onPress: () => handleCopyMessage(item.content) });
+        actions.unshift({ text: 'Trả lời', onPress: () => setReplyToMessage(item) });
+        actions.unshift({ text: 'Thả cảm xúc', onPress: () => chooseReaction(item) });
+        if (isMine && item.type === 'TEXT') actions.unshift({ text: 'Chỉnh sửa', onPress: () => { setEditingMessage(item); setEditDraft(item.content); } });
+        if (isMine) actions.unshift({ text: item.pinned ? 'Bỏ ghim' : 'Ghim', onPress: () => updatePinned(item) });
+        if (isMine) actions.unshift({ text: 'Xóa', style: 'destructive', onPress: () => deleteMessage(item) });
+        Alert.alert('Tùy chọn tin nhắn', 'Chọn thao tác', actions);
+    };
 
-        Alert.alert(
-            "Tùy chọn tin nhắn",
-            `Bạn có muốn sao chép tin nhắn này?`,
-            [
-                { text: "Hủy bỏ", style: "cancel" },
-                {
-                    text: "SAO CHÉP",
-                    onPress: () => handleCopyMessage(item.content), // Gọi hàm copy đã có
-                    style: 'default'
-                },
-                // Có thể thêm tùy chọn khác:
-                // { text: "Phản hồi", onPress: () => handleReply(item.id) },
-            ]
-        );
+    const chooseReaction = (message) => Alert.alert('Thả cảm xúc', 'Chọn emoji', [
+        ...['👍', '❤️', '😂', '😮', '😢', '🎉'].map(emoji => ({ text: emoji, onPress: () => runMessageAction(() => UserService.toggleMessageReaction(message.id, emoji, isChannelMode)) })),
+        { text: 'Hủy', style: 'cancel' }
+    ]);
+    const runMessageAction = async (action) => {
+        try { await action(); } catch (error) { Alert.alert('Lỗi', String(error.response?.data || error)); }
+    };
+    const updatePinned = (message) => runMessageAction(() => UserService.toggleMessagePin(message.id, isChannelMode));
+    const deleteMessage = (message) => Alert.alert('Xóa tin nhắn', 'Bạn muốn xóa tin nhắn này?', [
+        { text: 'Hủy', style: 'cancel' },
+        { text: 'Xóa', style: 'destructive', onPress: () => runMessageAction(() => UserService.deleteMessage(message.id, isChannelMode)) }
+    ]);
+    const saveEditedMessage = async () => {
+        if (!editingMessage || !editDraft.trim()) return;
+        try {
+            await UserService.editMessage(editingMessage.id, editDraft.trim(), isChannelMode);
+            setEditingMessage(null);
+        } catch (error) { Alert.alert('Lỗi', String(error.response?.data || error)); }
+    };
+    const readReactions = (raw) => {
+        try { return typeof raw === 'string' ? JSON.parse(raw || '{}') : (raw || {}); }
+        catch { return {}; }
     };
     // 1. CHỌN ẢNH TỪ THƯ VIỆN
     const pickImage = async () => {
@@ -394,6 +432,8 @@ export default function ChatScreen({ route, navigation }) {
         // So sánh item (tin mới hơn) với olderItem (tin cũ hơn)
         const showTimestamp = shouldShowTimestamp(item, olderItem);
         const isSelected = selectedMessageId === item.id;
+        const reactions = readReactions(item.reactions);
+        const replyTarget = item.replyToId ? messages.find(message => String(message.id) === String(item.replyToId)) : null;
         return (
             <View>
                 {showTimestamp && (
@@ -415,6 +455,8 @@ export default function ChatScreen({ route, navigation }) {
                                 isMyMessage ? styles.myBubble : styles.friendBubble,
                                 isImage && { padding: 0, backgroundColor: 'transparent' }
                             ]}>
+                                {item.pinned && <Text style={styles.pinnedLabel}>📌 Đã ghim</Text>}
+                                {replyTarget && <Text style={styles.replySnippet} numberOfLines={1}>↪ {replyTarget.sender?.username || 'Tin nhắn'}: {replyTarget.content}</Text>}
                                 {isImage ? (
                                     <TouchableOpacity onPress={() => { setSelectedImage(BASE_URL_IMG + item.content); setModalVisible(true); }}>
                                         <Image
@@ -461,10 +503,18 @@ export default function ChatScreen({ route, navigation }) {
                                         </View>
                                     </TouchableOpacity>
                                 ) : (
-                                    <Text style={{ color: isMyMessage ? 'white' : '#dcddde', fontSize: 16 }}>{item.content}</Text>
+                                    <Text style={{ color: isMyMessage ? 'white' : '#dcddde', fontSize: 16 }}>{item.content}{item.edited ? ' (đã sửa)' : ''}</Text>
                                 )}
                             </View>
                         </TouchableOpacity>
+                        {Object.keys(reactions).length > 0 && <View style={styles.reactionsRow}>
+                            {Object.entries(reactions).map(([emoji, users]) => (
+                                <TouchableOpacity key={emoji} style={styles.reactionChip}
+                                    onPress={() => runMessageAction(() => UserService.toggleMessageReaction(item.id, emoji, isChannelMode))}>
+                                    <Text style={styles.reactionText}>{emoji} {users.length}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>}
                         {isSelected && (
                             <Text style={[styles.detailTime, isMyMessage ? { textAlign: 'right' } : { textAlign: 'left' }]}>
                                 {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -476,14 +526,24 @@ export default function ChatScreen({ route, navigation }) {
         );
     };
 
+    const visibleMessages = searchText.trim()
+        ? messages.filter(message => String(message.content || '').toLowerCase().includes(searchText.trim().toLowerCase()))
+        : messages;
+
     return (
         <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
+            {searchOpen && <TextInput style={styles.searchInput} value={searchText} onChangeText={setSearchText}
+                placeholder="Tìm tin nhắn..." placeholderTextColor="#72767d" autoFocus />}
             <FlatList
-                ref={flatListRef} inverted={true} data={messages} keyExtractor={(item, index) => index.toString()}
+                ref={flatListRef} inverted={true} data={visibleMessages} keyExtractor={(item) => String(item.id)}
                 renderItem={renderMessage}
             // onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })} // Cuộn xuống khi mới vào
             />
 
+            {replyToMessage && <View style={styles.replyComposer}>
+                <Text style={styles.replyComposerText} numberOfLines={1}>Trả lời: {replyToMessage.sender?.username || 'tin nhắn'} — {replyToMessage.content}</Text>
+                <TouchableOpacity onPress={() => setReplyToMessage(null)}><Ionicons name="close" size={20} color="#b9bbbe" /></TouchableOpacity>
+            </View>}
             <View style={styles.inputArea}>
                 {/* Nút Chụp Ảnh (Camera) */}
                 <TouchableOpacity onPress={toggleMenu} style={styles.iconButton}>
@@ -576,6 +636,18 @@ export default function ChatScreen({ route, navigation }) {
                     <Image source={{ uri: selectedImage }} style={{ width: width, height: height * 0.8 }} resizeMode="contain" />
                 </View>
             </Modal>
+            <Modal visible={!!editingMessage} transparent animationType="fade" onRequestClose={() => setEditingMessage(null)}>
+                <View style={styles.editBackdrop}>
+                    <View style={styles.editCard}>
+                        <Text style={styles.editTitle}>Chỉnh sửa tin nhắn</Text>
+                        <TextInput style={styles.editInput} value={editDraft} onChangeText={setEditDraft} multiline autoFocus />
+                        <View style={styles.editActions}>
+                            <TouchableOpacity onPress={() => setEditingMessage(null)}><Text style={styles.editCancel}>Hủy</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={saveEditedMessage}><Text style={styles.editSave}>Lưu</Text></TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </KeyboardAvoidingView>
     );
 }
@@ -610,6 +682,21 @@ const styles = StyleSheet.create({
     timestampContainer: { alignItems: 'center', marginVertical: 15 },
     timestampText: { color: '#72767d', fontSize: 12, fontWeight: 'bold' },
     detailTime: { color: '#72767d', fontSize: 10, marginTop: 2, marginHorizontal: 5 },
+    pinnedLabel: { color: '#ffd166', fontSize: 11, marginBottom: 4 },
+    replySnippet: { color: '#c7c9ce', fontSize: 12, borderLeftWidth: 2, borderLeftColor: '#b9bbbe', paddingLeft: 6, marginBottom: 4 },
+    reactionsRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4, justifyContent: 'flex-end' },
+    reactionChip: { borderRadius: 12, borderWidth: 1, borderColor: '#5865F2', backgroundColor: '#2f3136', paddingHorizontal: 8, paddingVertical: 3, margin: 2 },
+    reactionText: { color: '#dcddde', fontSize: 13 },
+    searchInput: { backgroundColor: '#202225', color: 'white', padding: 10, margin: 8, borderRadius: 8 },
+    replyComposer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#202225', paddingHorizontal: 14, paddingVertical: 8 },
+    replyComposerText: { color: '#dcddde', flex: 1, marginRight: 8 },
+    editBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', padding: 24 },
+    editCard: { backgroundColor: '#2f3136', borderRadius: 12, padding: 16 },
+    editTitle: { color: 'white', fontWeight: 'bold', fontSize: 17, marginBottom: 12 },
+    editInput: { backgroundColor: '#40444b', color: 'white', borderRadius: 8, minHeight: 90, padding: 10, textAlignVertical: 'top' },
+    editActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 20, marginTop: 16 },
+    editCancel: { color: '#b9bbbe' },
+    editSave: { color: '#7289da', fontWeight: 'bold' },
 
     musicBar: {
         flexDirection: 'row',

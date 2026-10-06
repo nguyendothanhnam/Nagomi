@@ -37,4 +37,16 @@ public class ChannelMessage {
     }
 
     private Integer duration;
+
+    @Column(name = "edited", nullable = false)
+    private boolean edited = false;
+
+    @Column(name = "pinned", nullable = false)
+    private boolean pinned = false;
+
+    @Column(name = "reply_to_id")
+    private Long replyToId;
+
+    @Column(columnDefinition = "TEXT")
+    private String reactions = "{}";
 }

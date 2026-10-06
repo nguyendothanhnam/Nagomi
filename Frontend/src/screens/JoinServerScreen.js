@@ -4,9 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import UserService from '../services/UserService';
 
-export default function JoinServerScreen({ navigation, route }) {
-    // Nhận userId từ màn hình trước
-    const { userId } = route.params;
+export default function JoinServerScreen({ navigation }) {
 
     const [inviteCode, setInviteCode] = useState('');
     const [loading, setLoading] = useState(false);
@@ -19,7 +17,7 @@ export default function JoinServerScreen({ navigation, route }) {
         setLoading(true);
         try {
             // Gọi API tham gia
-            const message = await UserService.joinServer(userId, inviteCode.trim());
+            const message = await UserService.joinServer(inviteCode.trim());
 
             // Thành công -> Báo & Quay lại
             Alert.alert("Thành công", message, [
@@ -49,14 +47,14 @@ export default function JoinServerScreen({ navigation, route }) {
 
             <View style={styles.content}>
                 <Text style={styles.title}>Nhập mã mời để tham gia</Text>
-                <Text style={styles.subtitle}>Mã mời có dạng: KLEIN-XXXXXX</Text>
+                <Text style={styles.subtitle}>Mã mời có dạng: Nagomi-XXXXXXXX</Text>
 
                 <Text style={styles.label}>MÃ MỜI *</Text>
                 <TextInput
                     style={styles.input}
                     value={inviteCode}
                     onChangeText={setInviteCode}
-                    placeholder="Ví dụ: KLEIN-A1B2C3D4"
+                    placeholder="Ví dụ: Nagomi-A1B2C3D4"
                     placeholderTextColor="#72767d"
                     autoCapitalize="characters" // Tự động viết hoa
                 />

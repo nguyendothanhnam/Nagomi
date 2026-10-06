@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import com.example.Nagomi.util.JwtUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -62,12 +63,23 @@ public class UserController {
         }).orElse(ResponseEntity.notFound().build());
     }
     @PutMapping("/{userId}/status")
-    public ResponseEntity<?> updateUserStatus(@PathVariable Long userId, @RequestParam String status) {
+    public ResponseEntity<?> updateUserStatus(@PathVariable Long userId, @RequestParam String status,
+                                               @RequestHeader(value = "Authorization", required = false) String authorization) {
+        Long authenticatedUserId = JwtUtils.extractUserId(authorization);
+        if (authenticatedUserId == null || !authenticatedUserId.equals(userId))
+            return ResponseEntity.status(401).body("Phiên đăng nhập không hợp lệ.");
+        if (!"ONLINE".equals(status) && !"OFFLINE".equals(status))
+            return ResponseEntity.badRequest().body("Trạng thái không hợp lệ.");
         return userRepo.findById(userId).map(user -> {
             user.setStatus(status); // Cập nhật vào DB
             userRepo.save(user);
             // Gửi cả ID và Status mới ra kênh công khai "/topic/status"
-            messagingTemplate.convertAndSend("/topic/status", user);
+            Map<String, Object> presence = new HashMap<>();
+            presence.put("id", user.getId());
+            presence.put("username", user.getUsername());
+            presence.put("avatarUrl", user.getAvatarUrl());
+            presence.put("status", user.getStatus());
+            messagingTemplate.convertAndSend("/topic/status", presence);
 
             return ResponseEntity.ok("Đã cập nhật trạng thái: " + status);
         }).orElse(ResponseEntity.notFound().build());

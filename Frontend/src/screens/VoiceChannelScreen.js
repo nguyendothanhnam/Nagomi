@@ -2,6 +2,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Audio } from 'expo-av';
 import * as DocumentPicker from 'expo-document-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import SockJS from 'sockjs-client';
+import Stomp from 'stompjs';
+import { mediaDevices, RTCPeerConnection, RTCIceCandidate, RTCSessionDescription } from 'react-native-webrtc';
+import InCallManager from 'react-native-incall-manager';
 import {
     Alert, FlatList, Image,
     Modal,
@@ -13,7 +17,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import UserService from '../services/UserService';
-import { BASE_URL_IMG } from '../utils/constants';
+import { BASE_URL_IMG, SOCKET_URL } from '../utils/constants';
 export default function VoiceChannelScreen({ route, navigation }) {
     const { channelId, channelName, currentUser } = route.params;
 
@@ -27,9 +31,22 @@ export default function VoiceChannelScreen({ route, navigation }) {
     const [musicTitle, setMusicTitle] = useState('');
 
     const [currentMusic, setCurrentMusic] = useState({ url: null, title: null });
+    const [isMicMuted, setIsMicMuted] = useState(false);
+    const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+    const [connectionStatus, setConnectionStatus] = useState('CONNECTING');
+    const [speakingIds, setSpeakingIds] = useState([]);
 
     const stompClient = useRef(null);
     const musicSound = useRef(null);
+    const localStream = useRef(null);
+    const peers = useRef(new Map());
+    const remoteAudioTracks = useRef(new Map());
+    const pendingIceCandidates = useRef(new Map());
+    const isMicMutedRef = useRef(false);
+    const isSpeakerOnRef = useRef(true);
+    const retryTimer = useRef(null);
+    const retryCount = useRef(0);
+    const stopped = useRef(false);
     const isMounted = useRef(true); // 🛑 CÁI PHANH KHẨN CẤP
     const playlistRef = useRef([]);
     playlistRef.current = playlist; // Luôn cập nhật danh sách mới nhất vào Ref
@@ -42,12 +59,17 @@ export default function VoiceChannelScreen({ route, navigation }) {
     useFocusEffect(
         useCallback(() => {
             isMounted.current = true;
+            stopped.current = false;
             console.log("Đã vào kênh thoại:", channelName);
+            Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true, staysActiveInBackground: true, shouldDuckAndroid: true }).catch(() => {});
+            loadChannelMusic();
+            startVoiceSession();
 
             return () => {
                 console.log("Thoát màn hình - Đang dọn dẹp âm thanh...");
                 isMounted.current = false; // Chặn mọi hành động load nhạc ngay lập tức
                 setIsMusicPlaying(false);
+                leaveVoiceSession();
 
                 // Dọn dẹp Audio cưỡng bức
                 const soundObj = musicSound.current;
@@ -68,62 +90,217 @@ export default function VoiceChannelScreen({ route, navigation }) {
                     })();
                 }
 
-                // Thông báo Server rời kênh
-                if (stompClient.current?.connected) {
-                    stompClient.current.send(`/app/voice.leave/${channelId}/${currentUser.id}`, {});
-                }
             };
-        }, [channelId])
+        }, [channelId, currentUser.id])
     );
 
     // --- 2. CẤU HÌNH HỆ THỐNG VÀ SOCKET ---
     useEffect(() => {
         navigation.setOptions({ title: `Kênh: ${channelName}` });
-
-        const setupAudio = async () => {
-            try {
-                await Audio.setAudioModeAsync({
-                    allowsRecordingIOS: false,
-                    playsInSilentModeIOS: true,
-                    staysActiveInBackground: true,
-                    shouldDuckAndroid: true,
-                });
-            } catch (e) { console.log(e); }
-        };
-
-        setupAudio();
-        loadChannelMusic();
-        connectVoiceSocket();
     }, []);
 
-    const connectVoiceSocket = () => {
-        stompClient.current = global.stompClient;
-        if (!stompClient.current) return;
-
-        stompClient.current.subscribe(`/topic/voice.members.${channelId}`, (msg) => {
-            setMembers(JSON.parse(msg.body));
-        });
-
-        stompClient.current.subscribe(`/topic/music.${channelId}`, (msg) => {
-            handleMusicCommand(JSON.parse(msg.body));
-        });
-
-        stompClient.current.subscribe(`/topic/music.sync.${channelId}`, (msg) => {
-            handleMusicSync(JSON.parse(msg.body));
-        });
-
-        stompClient.current.send(`/app/voice.join/${channelId}`, {}, JSON.stringify(currentUser));
-
-        // Yêu cầu đồng bộ sau 1.2s
-        setTimeout(() => {
-            if (isMounted.current) {
-                stompClient.current.send(`/app/music.control/${channelId}`, {}, JSON.stringify({
-                    action: 'REQUEST_SYNC',
-                    sender: currentUser.username
-                }));
+    const startVoiceSession = async () => {
+        try {
+            localStream.current = await mediaDevices.getUserMedia({ audio: true, video: false });
+            if (stopped.current) {
+                localStream.current.getTracks().forEach(track => track.stop());
+                localStream.current = null;
+                return;
             }
-        }, 1200);
+            localStream.current.getAudioTracks().forEach(track => { track.enabled = !isMicMutedRef.current; });
+            InCallManager.start({ media: 'audio' });
+            InCallManager.setForceSpeakerphoneOn(true);
+        } catch (error) {
+            Alert.alert('Micro không khả dụng', 'Bạn vẫn có thể nghe kênh. Hãy kiểm tra quyền micro trong cài đặt ứng dụng.');
+        }
+        if (isMounted.current) connectVoiceSocket();
     };
+
+    const connectVoiceSocket = () => {
+        if (stopped.current) return;
+        const socket = new SockJS(SOCKET_URL);
+        const client = Stomp.over(socket);
+        stompClient.current = client;
+        client.debug = null;
+        client.connect({}, () => {
+            if (stopped.current) { client.disconnect(); return; }
+            retryCount.current = 0;
+            setConnectionStatus('CONNECTED');
+            client.subscribe(`/topic/voice.members.${channelId}`, message => {
+                const roster = JSON.parse(message.body);
+                setMembers(roster);
+                syncPeers(roster);
+            });
+            client.subscribe(`/topic/voice.signal.${channelId}`, message => handleVoiceSignal(JSON.parse(message.body)));
+            client.subscribe(`/topic/music.${channelId}`, message => handleMusicCommand(JSON.parse(message.body)));
+            client.subscribe(`/topic/music.sync.${channelId}`, message => handleMusicSync(JSON.parse(message.body)));
+            client.send(`/app/voice.join/${channelId}`, {}, JSON.stringify(currentUser));
+            setTimeout(() => {
+                if (isMounted.current && client.connected) client.send(`/app/music.control/${channelId}`, {}, JSON.stringify({ action: 'REQUEST_SYNC', sender: currentUser.username }));
+            }, 1200);
+        }, () => {
+            if (stopped.current) return;
+            setConnectionStatus('RECONNECTING');
+            scheduleReconnect();
+        });
+    };
+
+    const scheduleReconnect = () => {
+        if (stopped.current || retryTimer.current) return;
+        const delay = Math.min(1000 * (2 ** retryCount.current), 15000);
+        retryCount.current += 1;
+        retryTimer.current = setTimeout(() => {
+            retryTimer.current = null;
+            connectVoiceSocket();
+        }, delay);
+    };
+
+    const sendVoiceSignal = (data) => {
+        if (stompClient.current?.connected) stompClient.current.send(`/app/voice.signal/${channelId}`, {}, JSON.stringify(data));
+    };
+
+    const createPeer = (remoteId) => {
+        const key = String(remoteId);
+        if (peers.current.has(key)) return peers.current.get(key);
+        const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        localStream.current?.getTracks().forEach(track => peer.addTrack(track, localStream.current));
+        peer.onicecandidate = event => {
+            if (event.candidate) sendVoiceSignal({ from: currentUser.id, to: remoteId, type: 'candidate', candidate: event.candidate.toJSON() });
+        };
+        peer.ontrack = event => {
+            if (event.track?.kind === 'audio') {
+                event.track.enabled = isSpeakerOnRef.current;
+                remoteAudioTracks.current.set(key, [...(remoteAudioTracks.current.get(key) || []), event.track]);
+            }
+        };
+        peer.onconnectionstatechange = () => {
+            if (peer.connectionState === 'failed' || peer.connectionState === 'disconnected') {
+                if (Number(currentUser.id) > Number(remoteId)) {
+                    peers.current.delete(key);
+                    remoteAudioTracks.current.delete(key);
+                    peer.close();
+                    setTimeout(() => makeOffer(remoteId), 800);
+                } else {
+                    sendVoiceSignal({ from: currentUser.id, to: remoteId, type: 'restart' });
+                }
+            }
+        };
+        peers.current.set(key, peer);
+        return peer;
+    };
+
+    const makeOffer = async (remoteId) => {
+        try {
+            const peer = createPeer(remoteId);
+            const offer = await peer.createOffer();
+            await peer.setLocalDescription(offer);
+            sendVoiceSignal({ from: currentUser.id, to: remoteId, type: 'offer', description: offer });
+        } catch (error) { console.log('Voice offer failed:', error.message); }
+    };
+
+    const syncPeers = (roster) => {
+        const activeIds = new Set(roster.filter(user => String(user.id) !== String(currentUser.id)).map(user => String(user.id)));
+        peers.current.forEach((peer, id) => {
+            if (!activeIds.has(id)) { peer.close(); peers.current.delete(id); remoteAudioTracks.current.delete(id); }
+        });
+        roster.forEach(user => {
+            if (Number(currentUser.id) > Number(user.id) && String(user.id) !== String(currentUser.id) && !peers.current.has(String(user.id))) makeOffer(user.id);
+        });
+    };
+
+    const handleVoiceSignal = async (signal) => {
+        if (String(signal.to) !== String(currentUser.id) || String(signal.from) === String(currentUser.id)) return;
+        if (signal.type === 'restart') {
+            if (Number(currentUser.id) > Number(signal.from)) {
+                peers.current.get(String(signal.from))?.close();
+                peers.current.delete(String(signal.from));
+                remoteAudioTracks.current.delete(String(signal.from));
+                makeOffer(signal.from);
+            }
+            return;
+        }
+        try {
+            if (signal.type === 'offer') {
+                const oldPeer = peers.current.get(String(signal.from));
+                if (oldPeer && ['failed', 'disconnected', 'closed'].includes(oldPeer.connectionState)) {
+                    oldPeer.close();
+                    peers.current.delete(String(signal.from));
+                    remoteAudioTracks.current.delete(String(signal.from));
+                }
+            }
+            const peer = createPeer(signal.from);
+            if (signal.type === 'offer') {
+                await peer.setRemoteDescription(new RTCSessionDescription(signal.description));
+                await flushIceCandidates(signal.from, peer);
+                const answer = await peer.createAnswer();
+                await peer.setLocalDescription(answer);
+                sendVoiceSignal({ from: currentUser.id, to: signal.from, type: 'answer', description: answer });
+            } else if (signal.type === 'answer') {
+                await peer.setRemoteDescription(new RTCSessionDescription(signal.description));
+                await flushIceCandidates(signal.from, peer);
+            } else if (signal.type === 'candidate' && signal.candidate) {
+                if (peer.remoteDescription) await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                else pendingIceCandidates.current.set(String(signal.from), [...(pendingIceCandidates.current.get(String(signal.from)) || []), signal.candidate]);
+            }
+        } catch (error) { console.log('Voice signal failed:', error.message); }
+    };
+
+    const flushIceCandidates = async (remoteId, peer) => {
+        const queued = pendingIceCandidates.current.get(String(remoteId)) || [];
+        pendingIceCandidates.current.delete(String(remoteId));
+        for (const candidate of queued) {
+            try { await peer.addIceCandidate(new RTCIceCandidate(candidate)); } catch (_) { }
+        }
+    };
+
+    const leaveVoiceSession = () => {
+        if (stopped.current) return;
+        stopped.current = true;
+        if (retryTimer.current) clearTimeout(retryTimer.current);
+        retryTimer.current = null;
+        if (stompClient.current?.connected) {
+            stompClient.current.send(`/app/voice.leave/${channelId}/${currentUser.id}`, {});
+            stompClient.current.disconnect();
+        }
+        peers.current.forEach(peer => peer.close());
+        peers.current.clear();
+        remoteAudioTracks.current.clear();
+        pendingIceCandidates.current.clear();
+        localStream.current?.getTracks().forEach(track => track.stop());
+        localStream.current = null;
+        try { InCallManager.stop(); } catch (_) { }
+        Audio.setAudioModeAsync({ allowsRecordingIOS: false, staysActiveInBackground: false, shouldDuckAndroid: false }).catch(() => {});
+    };
+
+    const toggleMic = () => {
+        const nextMuted = !isMicMuted;
+        localStream.current?.getAudioTracks().forEach(track => { track.enabled = !nextMuted; });
+        isMicMutedRef.current = nextMuted;
+        setIsMicMuted(nextMuted);
+    };
+
+    const toggleSpeaker = () => {
+        const nextOn = !isSpeakerOn;
+        isSpeakerOnRef.current = nextOn;
+        setIsSpeakerOn(nextOn);
+        remoteAudioTracks.current.forEach(tracks => tracks.forEach(track => { track.enabled = nextOn; }));
+    };
+
+    useEffect(() => {
+        const timer = setInterval(async () => {
+            const active = new Set();
+            await Promise.all([...peers.current.entries()].map(async ([id, peer]) => {
+                try {
+                    const stats = await peer.getStats();
+                    stats.forEach(report => {
+                        if (report.type === 'inbound-rtp' && report.kind === 'audio' && report.audioLevel > 0.035) active.add(Number(id));
+                    });
+                } catch (_) { }
+            }));
+            setSpeakingIds([...active]);
+        }, 700);
+        return () => clearInterval(timer);
+    }, []);
 
     // --- 3. LOGIC ĐIỀU KHIỂN VÀ ĐỒNG BỘ ---
     const handleMusicSync = async (data) => {
@@ -303,9 +480,9 @@ export default function VoiceChannelScreen({ route, navigation }) {
 
     const renderMember = ({ item }) => (
         <View style={styles.memberItem}>
-            <Image source={{ uri: item.avatarUrl ? (BASE_URL_IMG + item.avatarUrl) : 'https://via.placeholder.com/100' }} style={styles.memberAvatar} />
-            <View style={styles.onlineStatus} />
-            <Text style={styles.memberText} numberOfLines={1}>{item.username}</Text>
+            <Image source={{ uri: item.avatarUrl ? (BASE_URL_IMG + item.avatarUrl) : 'https://via.placeholder.com/100' }} style={[styles.memberAvatar, speakingIds.includes(Number(item.id)) && styles.speakingAvatar]} />
+            <View style={[styles.onlineStatus, speakingIds.includes(Number(item.id)) && styles.speakingDot]} />
+            <Text style={styles.memberText} numberOfLines={1}>{item.username}{speakingIds.includes(Number(item.id)) ? ' · đang nói' : ''}</Text>
         </View>
     );
     const handleDeleteMusic = (musicId, title) => {
@@ -351,6 +528,17 @@ export default function VoiceChannelScreen({ route, navigation }) {
     return (
         <View style={styles.container}>
             <View style={styles.memberSection}>
+                <View style={styles.voiceStatusRow}>
+                    <Text style={styles.connectionText}>{connectionStatus === 'CONNECTED' ? 'Đã kết nối thoại' : 'Đang kết nối lại...'}</Text>
+                    <TouchableOpacity style={[styles.voiceControl, isMicMuted && styles.voiceControlOff]} onPress={toggleMic}>
+                        <Ionicons name={isMicMuted ? 'mic-off' : 'mic'} size={19} color="white" />
+                        <Text style={styles.voiceControlText}>{isMicMuted ? 'Bật mic' : 'Tắt mic'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.voiceControl, !isSpeakerOn && styles.voiceControlOff]} onPress={toggleSpeaker}>
+                        <Ionicons name={isSpeakerOn ? 'volume-high' : 'volume-mute'} size={19} color="white" />
+                        <Text style={styles.voiceControlText}>{isSpeakerOn ? 'Loa' : 'Tắt loa'}</Text>
+                    </TouchableOpacity>
+                </View>
                 <FlatList data={members} renderItem={renderMember} keyExtractor={(item) => item.id.toString()} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 15 }} />
             </View>
 
@@ -451,11 +639,18 @@ export default function VoiceChannelScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#36393f' },
-    memberSection: { height: 100, backgroundColor: '#2f3136', justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: '#202225', paddingTop: 20 },
+    memberSection: { height: 145, backgroundColor: '#2f3136', justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: '#202225', paddingTop: 8 },
+    voiceStatusRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 8 },
+    connectionText: { color: '#b9bbbe', fontSize: 11, flex: 1 },
+    voiceControl: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#3ba55d', borderRadius: 15, paddingHorizontal: 9, paddingVertical: 6, marginLeft: 6 },
+    voiceControlOff: { backgroundColor: '#ed4245' },
+    voiceControlText: { color: 'white', fontSize: 11, marginLeft: 4 },
     memberItem: { alignItems: 'center', marginHorizontal: 10 },
     memberAvatar: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, borderColor: '#5865f2' },
     onlineStatus: { position: 'absolute', bottom: 18, right: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: '#43b581', borderWidth: 2, borderColor: '#2f3136' },
     memberText: { color: '#dcddde', fontSize: 11, marginTop: 4, width: 60, textAlign: 'center' },
+    speakingAvatar: { borderColor: '#43b581', borderWidth: 3 },
+    speakingDot: { backgroundColor: '#ffd166' },
     playerCard: { margin: 15, padding: 20, backgroundColor: '#202225', borderRadius: 16 },
     playerInfo: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
     songMeta: { marginLeft: 15, flex: 1 },

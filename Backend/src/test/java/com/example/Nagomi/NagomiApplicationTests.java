@@ -1,10 +1,10 @@
-package com.example.Klein;
+package com.example.Nagomi;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class KleinApplicationTests {
+class NagomiApplicationTests {
 
 	@Test
 	void contextLoads() {

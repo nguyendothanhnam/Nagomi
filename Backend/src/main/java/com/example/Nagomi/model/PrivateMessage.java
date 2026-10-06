@@ -19,4 +19,10 @@ public class PrivateMessage {
 
     private String type;
     private Integer duration;
+
+    private boolean edited = false;
+    private boolean pinned = false;
+    private Long replyToId;
+    @Column(columnDefinition = "TEXT")
+    private String reactions = "{}";
 }

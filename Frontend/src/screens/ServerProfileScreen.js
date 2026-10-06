@@ -2,24 +2,32 @@
 import { useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Avatar from '../components/Avatar';
 import MemberSelectionModal from '../components/MemberSelectionModal'; // 👈 IMPORT MODAL MỚI
 import UserService from '../services/UserService';
+import SockJS from 'sockjs-client';
+import Stomp from 'stompjs';
+import { SOCKET_URL } from '../utils/constants';
 
 // --- Component phụ: Hiển thị 1 thành viên ---
-const MemberItem = ({ member, isOwner, isCurrentUserOwner, onDeleteMember }) => {
-    const canDelete = isCurrentUserOwner && !isOwner;
+const MemberItem = ({ member, isCurrentUserOwner, isCurrentUserAdmin, onDeleteMember, onChangeRole }) => {
+    const canDelete = (isCurrentUserOwner || isCurrentUserAdmin) && member.role !== 'OWNER';
+    const canChangeRole = isCurrentUserOwner && member.role !== 'OWNER';
     return (
         <View style={styles.memberRow}>
             <View style={styles.memberInfo}>
                 <Avatar uri={member.avatarUrl} name={member.username} size={36} style={{ marginRight: 10 }} />
                 <View>
                     <Text style={styles.memberName}>{member.username}</Text>
-                    {isOwner && <Text style={styles.memberRole}>CHỦ NHÓM</Text>}
+                    <View style={styles.memberMeta}>
+                        <View style={[styles.presenceDot, member.status === 'ONLINE' ? styles.onlineDot : styles.offlineDot]} />
+                        <Text style={styles.memberStatus}>{member.status === 'ONLINE' ? 'Online' : 'Offline'}</Text>
+                        <Text style={styles.memberRole}>{member.role === 'OWNER' ? 'CHỦ NHÓM' : member.role === 'ADMIN' ? 'QUẢN TRỊ' : 'THÀNH VIÊN'}</Text>
+                    </View>
                 </View>
             </View>
 
@@ -27,6 +35,11 @@ const MemberItem = ({ member, isOwner, isCurrentUserOwner, onDeleteMember }) => 
             {canDelete && (
                 <TouchableOpacity style={styles.deleteButton} onPress={() => onDeleteMember(member.id, member.username)}>
                     <Ionicons name="close" size={18} color="#ed4245" />
+                </TouchableOpacity>
+            )}
+            {canChangeRole && (
+                <TouchableOpacity style={styles.roleButton} onPress={() => onChangeRole(member)}>
+                    <Ionicons name="shield-checkmark-outline" size={18} color="#b9bbbe" />
                 </TouchableOpacity>
             )}
         </View>
@@ -48,6 +61,26 @@ export default function ServerProfileScreen({ route, navigation }) {
     const [isUploading, setIsUploading] = useState(false);
     const [inviteModalVisible, setInviteModalVisible] = useState(false); // 👈 STATE MODAL MỜI
     const isCurrentUserOwner = String(currentServer.owner.id) === String(currentUser.id);
+    const currentMembership = members.find(member => String(member.id) === String(currentUser.id));
+    const isCurrentUserAdmin = currentMembership?.role === 'ADMIN';
+
+    useEffect(() => {
+        const socket = new SockJS(SOCKET_URL);
+        const client = Stomp.over(socket);
+        client.debug = null;
+        client.connect({}, () => {
+            client.subscribe('/topic/status', message => {
+                const presence = JSON.parse(message.body);
+                setMembers(previous => previous.map(member => String(member.id) === String(presence.id)
+                    ? { ...member, status: presence.status }
+                    : member));
+            });
+        });
+        return () => {
+            if (client.connected) client.disconnect();
+            else socket.close();
+        };
+    }, []);
 
     // --- LOGIC TẢI LẠI THÀNH VIÊN SAU KHI MỜI/XÓA ---
     const reloadMembers = useCallback(async () => {
@@ -56,14 +89,12 @@ export default function ServerProfileScreen({ route, navigation }) {
 
             // 🔥 GỌI API THỰC TẾ ĐỂ LẤY SERVER OBJECT (Có danh sách members mới nhất)
             // Yêu cầu: Bạn phải có hàm UserService.getServerById() và Backend API GET /api/servers/{id}
-            const serverData = await UserService.getServerById(serverId);
-
-            if (serverData && Array.isArray(serverData.members)) {
-                // Cập nhật State Members và Server object
-                setMembers(serverData.members);
-                setCurrentServer(serverData);
-                console.log("✅ Danh sách thành viên đã được tải lại thành công từ Server.");
-            }
+            const [serverData, memberData] = await Promise.all([
+                UserService.getServerById(serverId),
+                UserService.getServerMemberDetails(serverId)
+            ]);
+            if (Array.isArray(memberData)) setMembers(memberData);
+            if (serverData) setCurrentServer(serverData);
         } catch (e) {
             console.error("❌ Lỗi tải lại thành viên khi focus:", e);
             // Alert.alert("Lỗi tải", "Không thể cập nhật danh sách nhóm."); 
@@ -182,6 +213,21 @@ export default function ServerProfileScreen({ route, navigation }) {
         );
     };
 
+    const handleChangeRole = (member) => {
+        const nextRole = member.role === 'ADMIN' ? 'MEMBER' : 'ADMIN';
+        Alert.alert('Phân quyền thành viên', `Đổi ${member.username} thành ${nextRole === 'ADMIN' ? 'quản trị viên' : 'thành viên'}?`, [
+            { text: 'Hủy', style: 'cancel' },
+            { text: 'Xác nhận', onPress: async () => {
+                try {
+                    await UserService.updateServerMemberRole(currentServer.id, member.id, nextRole);
+                    await reloadMembers();
+                } catch (error) {
+                    Alert.alert('Lỗi', String(error.response?.data || error));
+                }
+            } }
+        ]);
+    };
+
     // --- CHỨC NĂNG 5: CHỈNH SỬA TÊN NHÓM ---
     const handleEditName = () => {
         if (!isCurrentUserOwner) return;
@@ -244,7 +290,7 @@ export default function ServerProfileScreen({ route, navigation }) {
                     onPress: async () => {
                         try {
                             // Gọi API xử lý rời nhóm
-                            await UserService.leaveServer(currentServer.id, currentUser.id);
+                            await UserService.leaveServer(currentServer.id);
                             Alert.alert("Thành công", "Bạn đã rời khỏi máy chủ.");
                             // Quay lại màn hình Main sau khi rời thành công
                             navigation.navigate('Main');
@@ -269,7 +315,7 @@ export default function ServerProfileScreen({ route, navigation }) {
                     onPress: async () => {
                         try {
                             // Gọi API xóa nhóm
-                            await UserService.deleteServer(currentServer.id, currentUser.id);
+                            await UserService.deleteServer(currentServer.id);
                             Alert.alert("Thành công", "Nhóm đã được giải tán.");
                             navigation.navigate('Main');
                         } catch (error) {
@@ -327,7 +373,7 @@ export default function ServerProfileScreen({ route, navigation }) {
                 {/* 2. CHỨC NĂNG CHÍNH */}
                 <View style={styles.buttonGroup}>
                     {/* Nút Sao chép Link (Chỉ cho Chủ nhóm) */}
-                    {isCurrentUserOwner && (
+                    {(isCurrentUserOwner || isCurrentUserAdmin) && (
                         <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#5865F2' }]} onPress={handleCopyInviteLink}>
                             <Ionicons name="link-outline" size={20} color="white" style={{ marginRight: 10 }} />
                             <Text style={styles.actionButtonText}>SAO CHÉP LINK MỜI</Text>
@@ -348,9 +394,10 @@ export default function ServerProfileScreen({ route, navigation }) {
                         <MemberItem
                             key={member.id}
                             member={member}
-                            isOwner={String(member.id) === String(currentServer.owner.id)}
                             isCurrentUserOwner={isCurrentUserOwner}
+                            isCurrentUserAdmin={isCurrentUserAdmin}
                             onDeleteMember={handleDeleteMember}
+                            onChangeRole={handleChangeRole}
                         />
                     ))}
                 </View>
@@ -403,7 +450,13 @@ const styles = StyleSheet.create({
     memberRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#2f3136' },
     memberInfo: { flexDirection: 'row', alignItems: 'center' },
     memberName: { color: 'white', fontSize: 16, fontWeight: '500' },
-    memberRole: { color: '#5865F2', fontSize: 10, marginLeft: 10, fontWeight: 'bold' },
+    memberRole: { color: '#5865F2', fontSize: 10, marginLeft: 8, fontWeight: 'bold' },
+    memberMeta: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
+    presenceDot: { width: 7, height: 7, borderRadius: 4, marginRight: 4 },
+    onlineDot: { backgroundColor: '#3ba55d' },
+    offlineDot: { backgroundColor: '#747f8d' },
+    memberStatus: { color: '#b9bbbe', fontSize: 11 },
+    roleButton: { padding: 8, marginRight: 4 },
     deleteButton: { padding: 5, backgroundColor: 'rgba(237, 66, 69, 0.2)', borderRadius: 5 },
     leaveServerButton: {
         flexDirection: 'row',

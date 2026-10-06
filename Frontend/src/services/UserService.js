@@ -211,12 +211,12 @@ const UserService = {
     },
 
     // 5. Server & Channel
-    createServer: async (userId, name, iconUrl) => {
+    createServer: async (name, iconUrl) => {
         try {
             const token = await UserService.getToken();
             const response = await axios.post(`${BASE_URL}/servers/create`, null, {
                 // Truyền iconUrl vào đây (có thể là null nếu không chọn ảnh)
-                params: { ownerId: userId, name, iconUrl },
+                params: { name, iconUrl },
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             return response.data;
@@ -365,6 +365,52 @@ const UserService = {
             throw error.response?.data || "Xóa thành viên thất bại.";
         }
     },
+    editMessage: async (messageId, content, isChannelMode) => {
+        const token = await UserService.getToken();
+        const endpoint = isChannelMode ? `/channels/messages/${messageId}` : `/messages/private/${messageId}`;
+        const response = await axios.put(`${BASE_URL}${endpoint}`, null, {
+            params: { content }, headers: { 'Authorization': `Bearer ${token}` }
+        });
+        return response.data;
+    },
+    deleteMessage: async (messageId, isChannelMode) => {
+        const token = await UserService.getToken();
+        const endpoint = isChannelMode ? `/channels/messages/${messageId}` : `/messages/private/${messageId}`;
+        await axios.delete(`${BASE_URL}${endpoint}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    },
+    toggleMessagePin: async (messageId, isChannelMode) => {
+        const token = await UserService.getToken();
+        const endpoint = isChannelMode ? `/channels/messages/${messageId}/pin` : `/messages/private/${messageId}/pin`;
+        const response = await axios.put(`${BASE_URL}${endpoint}`, null, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        return response.data;
+    },
+    toggleMessageReaction: async (messageId, emoji, isChannelMode) => {
+        const token = await UserService.getToken();
+        const endpoint = isChannelMode ? `/channels/messages/${messageId}/reaction` : `/messages/private/${messageId}/reaction`;
+        const response = await axios.put(`${BASE_URL}${endpoint}`, null, {
+            params: { emoji }, headers: { 'Authorization': `Bearer ${token}` }
+        });
+        return response.data;
+    },
+    getServerMemberDetails: async (serverId) => {
+        const token = await UserService.getToken();
+        const response = await axios.get(`${BASE_URL}/servers/${serverId}/members/details`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        return response.data;
+    },
+    updateServerMemberRole: async (serverId, memberId, role) => {
+        const token = await UserService.getToken();
+        const response = await axios.put(`${BASE_URL}/servers/${serverId}/members/${memberId}/role`, null, {
+            params: { role },
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        return response.data;
+    },
     getInviteLink: async (serverId) => {
         try {
             const token = await UserService.getToken();
@@ -379,12 +425,12 @@ const UserService = {
         }
     },
 
-    joinServer: async (userId, inviteCode) => {
+    joinServer: async (inviteCode) => {
         try {
             const token = await UserService.getToken();
             // Đã sửa thành /servers/join thay vì /users/servers/join
             const response = await axios.post(`${BASE_URL}/servers/join`, null, {
-                params: { userId, inviteCode },
+                params: { inviteCode },
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             return response.data;
@@ -393,11 +439,10 @@ const UserService = {
         }
     },
 
-    leaveServer: async (serverId, userId) => {
+    leaveServer: async (serverId) => {
         try {
             const token = await UserService.getToken();
             const response = await axios.post(`${BASE_URL}/servers/${serverId}/leave`, null, {
-                params: { userId },
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             return response.data;
@@ -405,12 +450,11 @@ const UserService = {
             throw error.response?.data || "Không thể rời nhóm.";
         }
     },
-    deleteServer: async (serverId, userId) => {
+    deleteServer: async (serverId) => {
         try {
             const token = await UserService.getToken();
             // SỬA LẠI: Bỏ bớt /api nếu BASE_URL đã có nó, hoặc kiểm tra lại sự đồng bộ
             const response = await axios.delete(`${BASE_URL}/servers/${serverId}`, {
-                params: { userId: userId },
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             return response.data;

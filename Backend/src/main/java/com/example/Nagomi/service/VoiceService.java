@@ -16,14 +16,10 @@ public class VoiceService {
         voiceChannels.putIfAbsent(channelId, new ArrayList<>());
         List<User> members = voiceChannels.get(channelId);
 
-        // Kiểm tra giới hạn 5 người
-        if (members.size() >= 5) {
-            return false;
-        }
-
         // Nếu user chưa có trong danh sách thì mới thêm vào để tránh trùng lặp
         boolean exists = members.stream().anyMatch(u -> u.getId().equals(user.getId()));
         if (!exists) {
+            if (members.size() >= 5) return false;
             members.add(user);
         }
         return true;

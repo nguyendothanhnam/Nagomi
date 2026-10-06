@@ -62,6 +62,11 @@ public class MusicController {
         messagingTemplate.convertAndSend("/topic/server.voice.status", (Object) update);
     }
 
+    @MessageMapping("/voice.signal/{channelId}")
+    public void relayVoiceSignal(@DestinationVariable Long channelId, @Payload Map<String, Object> signal) {
+        messagingTemplate.convertAndSend("/topic/voice.signal." + channelId, signal);
+    }
+
     // --- LOGIC ĐIỀU KHIỂN NHẠC (ĐÃ GỘP VÀ SỬA LỖI) ---
     @MessageMapping("/music.control/{channelId}")
     public void handleMusicControl(@DestinationVariable Long channelId, @Payload MusicControlRequest request) {

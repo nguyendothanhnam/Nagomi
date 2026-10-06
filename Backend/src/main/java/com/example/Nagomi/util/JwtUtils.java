@@ -1,4 +1,4 @@
-package com.example.Klein.util;
+package com.example.Nagomi.util;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -6,13 +6,14 @@ import io.jsonwebtoken.security.Keys; // Thư viện mới
 import java.security.Key; // Thư viện mới
 import java.util.Base64; // Thư viện mới
 import java.util.Date;
+import io.jsonwebtoken.Claims;
 
 public class JwtUtils {
 
     // 1. CHUỖI BÍ MẬT DÀI VÀ PHỨC TẠP
     // Cần tối thiểu 64 ký tự (512 bits / 8) sau khi mã hóa Base64.
     // Tôi đã tạo một chuỗi ngẫu nhiên, dài, và an toàn hơn cho bạn.
-    private static final String JWT_SECRET_STRING = "KleinChatApplicationSecretKeyForHS512AlgorithmMustBeAtLeast512BitsLongForSecurity";
+    private static final String JWT_SECRET_STRING = "NagomiChatApplicationSecretKeyForHS512AlgorithmMustBeAtLeast512BitsLongForSecurity";
 
     // 2. KHÓA KÝ (Signing Key) MẠNH
     // Sử dụng Base64 và Keys.hmacShaKeyFor để đảm bảo khóa có kích thước 512 bits.
@@ -31,5 +32,17 @@ public class JwtUtils {
                 // 3. SỬ DỤNG KHÓA KÝ MẠNH (signingKey) VÀ THUẬT TOÁN (HS512)
                 .signWith(signingKey, SignatureAlgorithm.HS512) // Đã sửa lỗi WeakKeyException
                 .compact();
+    }
+
+    public static Long extractUserId(String authorizationHeader) {
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) return null;
+        try {
+            Claims claims = Jwts.parserBuilder().setSigningKey(signingKey).build()
+                    .parseClaimsJws(authorizationHeader.substring(7)).getBody();
+            Object userId = claims.get("userId");
+            return userId instanceof Number ? ((Number) userId).longValue() : Long.valueOf(userId.toString());
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 }

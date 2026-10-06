@@ -314,7 +314,7 @@ export default function MainLayout({ navigation, route }) {
     const submitCreateServer = async () => {
         if (!newServerName.trim()) return Alert.alert("Lỗi", "Nhập tên Server!");
 
-        const result = await UserService.createServer(currentUser.id, newServerName, newServerIcon);
+        const result = await UserService.createServer(newServerName, newServerIcon);
 
         if (result) {
             setCreateServerVisible(false);

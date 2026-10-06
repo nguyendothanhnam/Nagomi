@@ -1,17 +1,19 @@
 {
   "expo": {
-    "name": "Klein_Frontend",
-    "slug": "Klein_Frontend",
+    "name": "Nagomi",
+    "slug": "nagomi",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "kleinfrontend",
+    "scheme": "nagomi",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": { "NSMicrophoneUsageDescription": "Nagomi cần dùng micro để bạn trò chuyện trong kênh thoại." }
     },
     "android": {
+      "permissions": ["android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -20,7 +22,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.Klein_Frontend"
+      "package": "com.anonymous.nagomi"
     },
     "web": {
       "output": "static",
@@ -28,6 +30,7 @@
     },
     "plugins": [
       "expo-router",
+      "@config-plugins/react-native-webrtc",
       [
         "expo-splash-screen",
         {
