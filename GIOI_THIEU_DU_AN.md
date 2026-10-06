@@ -22,7 +22,7 @@ Nagomi là ứng dụng giao tiếp cộng đồng, giúp người dùng kết n
 | Ứng dụng di động | React Native, Expo, JavaScript/TypeScript |
 | Điều hướng | Expo Router, React Navigation |
 | Giao tiếp thời gian thực | WebSocket, STOMP, SockJS; WebRTC cho thoại |
-| Backend | Java 17, Spring Boot, Spring Web, WebSocket, Spring Data JPA |
+| Backend | Java 21, Spring Boot, Spring Web, WebSocket, Spring Data JPA |
 | Cơ sở dữ liệu | MySQL |
 | Xác thực | JWT; BCrypt để băm mật khẩu |
 
@@ -50,7 +50,7 @@ Có thể mở ứng dụng bằng Expo Go, Android Emulator hoặc iOS Simulato
 
 ### Backend
 
-Backend yêu cầu Java 17 và Maven. Cần cấu hình kết nối MySQL trong `Backend/src/main/resources/application.properties` trước khi khởi chạy:
+Backend yêu cầu Java 21 và Maven. Cần cấu hình kết nối MySQL trong `Backend/src/main/resources/application.properties` trước khi khởi chạy:
 
 ```bash
 cd Backend
