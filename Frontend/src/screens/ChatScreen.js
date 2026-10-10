@@ -13,14 +13,15 @@ import {
     LayoutAnimation,
     Modal,
     Platform, StyleSheet, Text,
-    TextInput, TouchableOpacity,
+    ScrollView, TextInput, TouchableOpacity,
     UIManager,
     View
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import SockJS from 'sockjs-client';
 import Stomp from 'stompjs';
 import UserService from '../services/UserService';
+import Avatar from '../components/Avatar';
 import { BASE_URL_IMG, SOCKET_URL } from '../utils/constants';
 // Kích hoạt LayoutAnimation cho Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -64,7 +65,7 @@ const shouldShowTimestamp = (currentMsg, prevMsg) => {
     return diffMinutes > 10;
 };
 export default function ChatScreen({ route, navigation }) {
-    const { myId, friendId, friendUsername, type, channelId } = route.params;
+    const { myId, friendId, friendUsername, friendAvatarUrl, type, channelId } = route.params;
     const isChannelMode = type === 'CHANNEL';
 
     const [recording, setRecording] = useState(null);
@@ -98,12 +99,7 @@ export default function ChatScreen({ route, navigation }) {
 
     useEffect(() => {
         navigation.setOptions({
-            title: friendUsername || (isChannelMode ? "Kênh Chat" : `Chat`),
-            headerStyle: { backgroundColor: '#2f3136' },
-            headerTintColor: '#dcddde',
-            headerRight: () => <TouchableOpacity onPress={() => setSearchOpen(value => !value)} style={{ paddingHorizontal: 8 }}>
-                <Ionicons name="search" size={21} color="#dcddde" />
-            </TouchableOpacity>
+            headerShown: false,
         });
         loadHistory();
         connectToWebSocket();
@@ -531,14 +527,41 @@ export default function ChatScreen({ route, navigation }) {
         : messages;
 
     return (
-        <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
+        <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={0}>
+            <View style={styles.chatHeader}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                    <Ionicons name="arrow-back" size={23} color="#d8d9dd" />
+                </TouchableOpacity>
+                <Avatar uri={friendAvatarUrl} name={friendUsername} size={36} />
+                <View style={styles.chatIdentity}>
+                    <Text style={styles.chatName}>{friendUsername || (isChannelMode ? 'Kênh trò chuyện' : 'Tin nhắn')}</Text>
+                    <View style={styles.presenceRow}><View style={styles.presenceDot} /><Text style={styles.presenceText}>Trực tuyến</Text></View>
+                </View>
+                <View style={styles.headerTools}>
+                    <Ionicons name="call" size={19} color="#b9bbc4" />
+                    <Ionicons name="videocam" size={21} color="#b9bbc4" />
+                    <TouchableOpacity onPress={() => setSearchOpen(value => !value)} style={styles.headerSearchButton}>
+                        <Ionicons name="search" size={19} color="#d4d5da" />
+                    </TouchableOpacity>
+                    <Ionicons name="notifications" size={19} color="#b9bbc4" />
+                </View>
+            </View>
             {searchOpen && <TextInput style={styles.searchInput} value={searchText} onChangeText={setSearchText}
-                placeholder="Tìm tin nhắn..." placeholderTextColor="#72767d" autoFocus />}
-            <FlatList
-                ref={flatListRef} inverted={true} data={visibleMessages} keyExtractor={(item) => String(item.id)}
-                renderItem={renderMessage}
-            // onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })} // Cuộn xuống khi mới vào
-            />
+                placeholder="Tìm tin nhắn..." placeholderTextColor="#9a9ca5" autoFocus />}
+            {messages.length === 0 && !searchText.trim() ? (
+                <ScrollView contentContainerStyle={styles.welcomeScroll}>
+                    <View style={styles.welcomeContent}>
+                        <View style={styles.welcomeAvatar}><Avatar uri={friendAvatarUrl} name={friendUsername} size={62} /></View>
+                        <Text style={styles.welcomeTitle}>Chào mừng bạn đến với khởi đầu của lịch sử trò chuyện trực tiếp với {friendUsername || 'bạn'}.</Text>
+                    </View>
+                </ScrollView>
+            ) : (
+                <FlatList
+                    ref={flatListRef} inverted={true} data={visibleMessages} keyExtractor={(item) => String(item.id)}
+                    renderItem={renderMessage}
+                    ListEmptyComponent={<Text style={styles.noSearchResults}>Không tìm thấy tin nhắn phù hợp.</Text>}
+                />
+            )}
 
             {replyToMessage && <View style={styles.replyComposer}>
                 <Text style={styles.replyComposerText} numberOfLines={1}>Trả lời: {replyToMessage.sender?.username || 'tin nhắn'} — {replyToMessage.content}</Text>
@@ -546,11 +569,11 @@ export default function ChatScreen({ route, navigation }) {
             </View>}
             <View style={styles.inputArea}>
                 {/* Nút Chụp Ảnh (Camera) */}
-                <TouchableOpacity onPress={toggleMenu} style={styles.iconButton}>
+                <TouchableOpacity onPress={toggleMenu} style={styles.composerRoundButton}>
                     <Ionicons
-                        name={menuOpen ? "close-circle" : "chevron-forward-circle"}
-                        size={30}
-                        color="#b9bbbe"
+                        name={menuOpen ? "close" : "add"}
+                        size={23}
+                        color="#d5d6da"
                     />
                 </TouchableOpacity>
                 {menuOpen && (
@@ -586,6 +609,7 @@ export default function ChatScreen({ route, navigation }) {
                     </View>
                 ) : (
                     <>
+                        <View style={styles.composerInputWrap}>
                         <TextInput
                             style={styles.input}
                             value={input}
@@ -623,6 +647,7 @@ export default function ChatScreen({ route, navigation }) {
                                 <Ionicons name="mic" size={24} color="#b9bbbe" />
                             </TouchableOpacity>
                         )}
+                        </View>
                     </>
                 )}
             </View>
@@ -653,7 +678,21 @@ export default function ChatScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#36393f' },
+    container: { flex: 1, backgroundColor: '#292a2f' },
+    chatHeader: { minHeight: 58, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, backgroundColor: '#242529', borderBottomWidth: 1, borderBottomColor: '#38393f', gap: 10 },
+    backButton: { padding: 5, marginRight: 1 },
+    chatIdentity: { flex: 1, minWidth: 0, marginLeft: 1 },
+    chatName: { color: '#f0f1f3', fontSize: 15, fontWeight: '700' },
+    presenceRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+    presenceDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#46bd89', marginRight: 5 },
+    presenceText: { color: '#a9abb3', fontSize: 11 },
+    headerTools: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingLeft: 8 },
+    headerSearchButton: { minWidth: 34, minHeight: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1c1d20', borderRadius: 8 },
+    welcomeScroll: { flexGrow: 1 },
+    welcomeContent: { flex: 1, justifyContent: 'flex-end', minHeight: 245, paddingHorizontal: 20, paddingBottom: 20 },
+    welcomeAvatar: { alignSelf: 'center', marginBottom: 12 },
+    welcomeTitle: { color: '#c9cbd1', textAlign: 'center', fontSize: 13, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#414249' },
+    noSearchResults: { color: '#a4a6ae', textAlign: 'center', padding: 24 },
     msgRow: { flexDirection: 'row', marginVertical: 5, paddingHorizontal: 10 },
     bubble: { padding: 10, borderRadius: 10 },
     myBubble: { backgroundColor: '#5865F2' },
@@ -661,21 +700,19 @@ const styles = StyleSheet.create({
     inputArea: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingTop: 10,
-        paddingBottom: 20,
-        paddingHorizontal: 15,
-        backgroundColor: '#2f3136',
-        borderTopWidth: 1,
-        borderTopColor: '#202225'
+        paddingTop: 8,
+        paddingBottom: Platform.OS === 'web' ? 10 : 16,
+        paddingHorizontal: 12,
+        backgroundColor: '#292a2f',
     },
+    composerRoundButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#414249', marginRight: 8 },
+    composerInputWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#414249', borderRadius: 20, paddingHorizontal: 12, minHeight: 42 },
     input: {
         flex: 1,
-        backgroundColor: '#40444b',
-        color: 'white',
-        borderRadius: 20,
-        paddingHorizontal: 15,
+        color: '#f0f1f3',
+        paddingHorizontal: 3,
         paddingVertical: 8,
-        marginHorizontal: 10
+        maxHeight: 100,
     },
     iconButton: { padding: 5 },
     recordingContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 10 },

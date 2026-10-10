@@ -5,13 +5,24 @@ import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import Avatar from '../components/Avatar';
 import MemberSelectionModal from '../components/MemberSelectionModal'; // 👈 IMPORT MODAL MỚI
 import UserService from '../services/UserService';
 import SockJS from 'sockjs-client';
 import Stomp from 'stompjs';
 import { SOCKET_URL } from '../utils/constants';
+
+const uniqueMembers = (items = []) => {
+    const seen = new Set();
+    return items.filter(member => {
+        if (member?.id == null) return false;
+        const id = String(member.id);
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+    });
+};
 
 // --- Component phụ: Hiển thị 1 thành viên ---
 const MemberItem = ({ member, isCurrentUserOwner, isCurrentUserAdmin, onDeleteMember, onChangeRole }) => {
@@ -51,12 +62,12 @@ export default function ServerProfileScreen({ route, navigation }) {
 
     const [currentServer, setCurrentServer] = useState(server);
     // Tạm thời dùng list có sẵn từ server.members. Backend cần phải trả về list này.
-    const [members, setMembers] = useState(server.members || [{
+    const [members, setMembers] = useState(() => uniqueMembers(server.members || [{
         id: server.owner.id,
         username: server.owner.username,
         avatarUrl: server.owner.avatarUrl,
         // Giả định owner là member duy nhất nếu không có list members
-    }]);
+    }]));
 
     const [isUploading, setIsUploading] = useState(false);
     const [inviteModalVisible, setInviteModalVisible] = useState(false); // 👈 STATE MODAL MỜI
@@ -93,7 +104,7 @@ export default function ServerProfileScreen({ route, navigation }) {
                 UserService.getServerById(serverId),
                 UserService.getServerMemberDetails(serverId)
             ]);
-            if (Array.isArray(memberData)) setMembers(memberData);
+            if (Array.isArray(memberData)) setMembers(uniqueMembers(memberData));
             if (serverData) setCurrentServer(serverData);
         } catch (e) {
             console.error("❌ Lỗi tải lại thành viên khi focus:", e);

@@ -1,16 +1,11 @@
 package com.example.Nagomi.model;
 
 
-import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "private_messages")
 @Data
 public class PrivateMessage {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String content;
     private Long senderId;   // ID người gửi
@@ -23,6 +18,5 @@ public class PrivateMessage {
     private boolean edited = false;
     private boolean pinned = false;
     private Long replyToId;
-    @Column(columnDefinition = "TEXT")
     private String reactions = "{}";
 }

@@ -101,8 +101,8 @@ public class ChatController {
         if (message == null) return ResponseEntity.notFound().build();
         if (!message.getSenderId().equals(userId)) return ResponseEntity.status(403).body("Bạn chỉ có thể xóa tin nhắn của mình.");
         Map<String, Object> deleted = Map.of("action", "DELETE", "id", messageId);
-        messagingTemplate.convertAndSend("/topic/private/" + message.getSenderId(), deleted);
-        messagingTemplate.convertAndSend("/topic/private/" + message.getReceiverId(), deleted);
+        messagingTemplate.convertAndSend("/topic/private/" + message.getSenderId(), (Object) deleted);
+        messagingTemplate.convertAndSend("/topic/private/" + message.getReceiverId(), (Object) deleted);
         msgRepo.delete(message);
         return ResponseEntity.ok().build();
     }
@@ -144,8 +144,8 @@ public class ChatController {
 
     private ResponseEntity<?> publishPrivateUpdate(PrivateMessage message, String action) {
         Map<String, Object> event = Map.of("action", action, "message", message);
-        messagingTemplate.convertAndSend("/topic/private/" + message.getSenderId(), event);
-        messagingTemplate.convertAndSend("/topic/private/" + message.getReceiverId(), event);
+        messagingTemplate.convertAndSend("/topic/private/" + message.getSenderId(), (Object) event);
+        messagingTemplate.convertAndSend("/topic/private/" + message.getReceiverId(), (Object) event);
         return ResponseEntity.ok(message);
     }
 
@@ -175,7 +175,7 @@ public class ChatController {
         if (!message.getSender().getId().equals(userId)) return ResponseEntity.status(403).body("Bạn chỉ có thể xóa tin nhắn của mình.");
         Long channelId = message.getChannel().getId();
         channelMsgRepo.delete(message);
-        messagingTemplate.convertAndSend("/topic/channel/" + channelId, Map.of("action", "DELETE", "id", messageId));
+        messagingTemplate.convertAndSend("/topic/channel/" + channelId, (Object) Map.of("action", "DELETE", "id", messageId));
         return ResponseEntity.ok().build();
     }
 
@@ -214,7 +214,7 @@ public class ChatController {
     }
 
     private ResponseEntity<?> publishMessageUpdate(ChannelMessage message, String action) {
-        messagingTemplate.convertAndSend("/topic/channel/" + message.getChannel().getId(), Map.of("action", action, "message", message));
+        messagingTemplate.convertAndSend("/topic/channel/" + message.getChannel().getId(), (Object) Map.of("action", action, "message", message));
         return ResponseEntity.ok(message);
     }
 

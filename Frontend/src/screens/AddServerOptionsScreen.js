@@ -1,5 +1,5 @@
 import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function AddServerOptionsScreen({ navigation, route }) {
     // Nhận callback từ MainLayout để mở Modal Tạo Server

@@ -79,7 +79,7 @@ public class UserController {
             presence.put("username", user.getUsername());
             presence.put("avatarUrl", user.getAvatarUrl());
             presence.put("status", user.getStatus());
-            messagingTemplate.convertAndSend("/topic/status", presence);
+            messagingTemplate.convertAndSend("/topic/status", (Object) presence);
 
             return ResponseEntity.ok("Đã cập nhật trạng thái: " + status);
         }).orElse(ResponseEntity.notFound().build());
@@ -136,13 +136,28 @@ public class UserController {
     ) {
         try {
             List<Object[]> results = userRepo.searchUsersWithMutualCount(myId, keyword);
+            Map<Long, FriendRequest> relationships = friendRequestRepository.findActiveRelationships(myId);
 
             List<Map<String, Object>> response = results.stream().map(row -> {
                 Map<String, Object> map = new HashMap<>();
+                Long targetId = ((Number) row[0]).longValue();
                 map.put("id", row[0]);
                 map.put("username", row[1]);
                 map.put("avatarUrl", row[2]);
                 map.put("mutualFriends", row[3]);
+                FriendRequest relationship = relationships.get(targetId);
+                String friendStatus = "NONE";
+                if (relationship != null) {
+                    if (relationship.getStatus() == com.example.Nagomi.model.RequestStatus.ACCEPTED) {
+                        friendStatus = "FRIENDS";
+                    } else if (relationship.getSender().getId().equals(myId)) {
+                        friendStatus = "REQUEST_SENT";
+                    } else {
+                        friendStatus = "REQUEST_RECEIVED";
+                    }
+                    map.put("friendRequestId", relationship.getId());
+                }
+                map.put("friendStatus", friendStatus);
                 return map;
             }).collect(Collectors.toList());
 

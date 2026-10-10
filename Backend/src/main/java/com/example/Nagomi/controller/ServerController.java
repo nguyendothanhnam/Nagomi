@@ -15,6 +15,9 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/servers")
@@ -179,19 +182,20 @@ public class ServerController {
     @GetMapping("/{serverId}/members")
     public List<Long> getServerMemberIds(@PathVariable Long serverId) {
         List<ServerMember> members = memberRepo.findByServerId(serverId);
-        List<Long> userIds = new ArrayList<>();
+        Set<Long> userIds = new LinkedHashSet<>();
         for (ServerMember m : members) {
-            userIds.add(m.getUser().getId());
+            if (m.getUser() != null && m.getUser().getId() != null) userIds.add(m.getUser().getId());
         }
-        return userIds;
+        return new ArrayList<>(userIds);
     }
 
     @GetMapping("/{serverId}/members/details")
     public ResponseEntity<?> getServerMembers(@PathVariable Long serverId) {
         if (!serverRepo.existsById(serverId)) return ResponseEntity.notFound().build();
-        List<Map<String, Object>> result = new ArrayList<>();
+        Map<Long, Map<String, Object>> uniqueMembers = new LinkedHashMap<>();
         for (ServerMember membership : memberRepo.findByServerId(serverId)) {
             User user = membership.getUser();
+            if (user == null || user.getId() == null || uniqueMembers.containsKey(user.getId())) continue;
             Map<String, Object> member = new HashMap<>();
             member.put("id", user.getId());
             member.put("username", user.getUsername());
@@ -199,9 +203,9 @@ public class ServerController {
             member.put("status", user.getStatus() == null ? "OFFLINE" : user.getStatus());
             member.put("role", membership.getRole() == null ? "MEMBER" : membership.getRole());
             member.put("joinedAt", membership.getJoinedAt());
-            result.add(member);
+            uniqueMembers.put(user.getId(), member);
         }
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(new ArrayList<>(uniqueMembers.values()));
     }
 
     @PutMapping("/{serverId}/members/{memberId}/role")
@@ -267,12 +271,8 @@ public class ServerController {
         }
         User user = userOpt.get();
 
-        // 3. KIỂM TRA CHÍNH XÁC HƠN: So sánh theo ID
-        // Đôi khi .contains(user) có thể không chính xác nếu Equals/HashCode chưa được định nghĩa
-        boolean isAlreadyMember = server.getMembers().stream()
-                .anyMatch(member -> member.getId().equals(userId));
-
-        if (isAlreadyMember) {
+        // Check the membership collection, which is the source used by the member list API.
+        if (memberRepo.existsByServerIdAndUserId(server.getId(), userId)) {
             // Trả về mã lỗi 400 kèm thông báo rõ ràng
             return ResponseEntity.badRequest().body("ALREADY_JOINED");
         }

@@ -1,0 +1,15 @@
+
+# Google Cloud credentials
+Backend/src/main/resources/service-account.json
+
+# Google Cloud credentials
+Backend/src/main/resources/service-account.json
+
+# Credentials
+Backend/src/main/resources/service-account.json
+
+# Dependencies
+node_modules/
+Frontend/node_modules/
+Backend/target/
+

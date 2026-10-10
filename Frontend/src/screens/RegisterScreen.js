@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
+import AuthScreenLayout from '../components/AuthScreenLayout';
 import UserService from '../services/UserService';
 
 export default function RegisterScreen({ navigation }) {
@@ -8,117 +9,52 @@ export default function RegisterScreen({ navigation }) {
     const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(false);
 
-    // const handleRegister = async () => {
-    //     if (!username || !password || !email) {
-    //         Alert.alert("Lỗi", "Vui lòng điền đầy đủ thông tin!");
-    //         return;
-    //     }
+    const notify = (title, message) => {
+        if (Platform.OS === 'web') window.alert(`${title}\n\n${message}`);
+        else Alert.alert(title, message);
+    };
 
-    //     setLoading(true);
-    //     try {
-    //         // Gọi API Đăng ký
-    //         const result = await UserService.register(username, password, email);
-
-    //         // Backend trả về chuỗi "Đăng ký thành công!" hoặc JSON
-    //         Alert.alert("Thành công", "Tạo tài khoản thành công! Hãy đăng nhập.", [
-    //             { text: "OK", onPress: () => navigation.goBack() } // Quay lại màn hình Login
-    //         ]);
-    //     } catch (error) {
-    //         Alert.alert("Thất bại", error.toString());
-    //     } finally {
-    //         setLoading(false);
-    //     }
-    // };
     const handleRegister = async () => {
-        if (!username || !password || !email) {
-            const msg = "Vui lòng điền đầy đủ thông tin!";
-            if (Platform.OS === 'web') alert(msg); else Alert.alert("Lỗi", msg);
+        if (!username.trim() || !password || !email.trim()) {
+            notify('Thiếu thông tin', 'Vui lòng điền email, tên đăng nhập và mật khẩu.');
             return;
         }
-
         setLoading(true);
         try {
-            await UserService.register(username, password, email);
-
-            const successMsg = "Tạo tài khoản thành công! Hãy đăng nhập.";
-
-            if (Platform.OS === 'web') {
-                alert(successMsg);
-                navigation.goBack();
-            } else {
-                Alert.alert("Thành công", successMsg, [
-                    { text: "OK", onPress: () => navigation.goBack() }
-                ]);
-            }
+            await UserService.register(username.trim(), password, email.trim());
+            notify('Tạo tài khoản thành công', 'Bạn có thể đăng nhập bằng tài khoản vừa tạo.');
+            navigation.replace('Login');
         } catch (error) {
-            // 'error' này chính là chuỗi "Username đã tồn tại!" từ Backend trả về
-            const errorMsg = error.toString();
-
-            if (Platform.OS === 'web') {
-                alert(errorMsg);
-            } else {
-                Alert.alert("Thất bại", errorMsg);
-            }
+            const responseMessage = error.response?.data;
+            notify('Không thể đăng ký', typeof responseMessage === 'string' ? responseMessage : 'Đã xảy ra lỗi. Hãy kiểm tra kết nối máy chủ.');
         } finally {
             setLoading(false);
         }
     };
+
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Tạo tài khoản</Text>
-            <Text style={styles.subtitle}>Tham gia cộng đồng ngay hôm nay</Text>
-
-            <View style={styles.inputContainer}>
-                <Text style={styles.label}>EMAIL</Text>
-                <TextInput
-                    style={styles.input}
-                    value={email} onChangeText={setEmail}
-                    placeholder="example@gmail.com" placeholderTextColor="#72767d"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                />
-
-                <Text style={styles.label}>TÊN NGƯỜI DÙNG</Text>
-                <TextInput
-                    style={styles.input}
-                    value={username} onChangeText={setUsername}
-                    placeholder="Username" placeholderTextColor="#72767d"
-                    autoCapitalize="none"
-                />
-
-                <Text style={styles.label}>MẬT KHẨU</Text>
-                <TextInput
-                    style={styles.input}
-                    value={password} onChangeText={setPassword}
-                    placeholder="********" placeholderTextColor="#72767d"
-                    secureTextEntry
-                />
-            </View>
-
-            <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
-                {loading ? (
-                    <ActivityIndicator color="#fff" />
-                ) : (
-                    <Text style={styles.buttonText}>ĐĂNG KÝ</Text>
-                )}
+        <AuthScreenLayout mode="register" navigation={navigation}>
+            <Text style={styles.subtitle}>Tạo tài khoản Nagomi của bạn</Text>
+            <Text style={styles.label}>EMAIL</Text>
+            <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="example@email.com" placeholderTextColor="#777b85" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+            <Text style={styles.label}>TÊN NGƯỜI DÙNG</Text>
+            <TextInput style={styles.input} value={username} onChangeText={setUsername} placeholder="Tên đăng nhập" placeholderTextColor="#777b85" autoCapitalize="none" autoCorrect={false} />
+            <Text style={styles.label}>MẬT KHẨU</Text>
+            <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="Tạo mật khẩu" placeholderTextColor="#777b85" secureTextEntry />
+            <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleRegister} disabled={loading}>
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>TẠO TÀI KHOẢN</Text>}
             </TouchableOpacity>
-
-            <TouchableOpacity style={styles.linkButton} onPress={() => navigation.goBack()}>
-                <Text style={styles.linkText}>Đã có tài khoản? Đăng nhập</Text>
-            </TouchableOpacity>
-        </View>
+            <Text style={styles.note}>Bằng việc đăng ký, bạn đồng ý với các quy tắc cộng đồng Nagomi.</Text>
+        </AuthScreenLayout>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#36393f' },
-    title: { fontSize: 24, fontWeight: 'bold', color: '#fff', textAlign: 'center', marginBottom: 10 },
-    subtitle: { fontSize: 16, color: '#b9bbbe', textAlign: 'center', marginBottom: 30 },
-    inputContainer: { marginBottom: 20 },
-    label: { color: '#b9bbbe', fontSize: 12, fontWeight: 'bold', marginBottom: 8, marginTop: 10 },
-    input: { backgroundColor: '#202225', color: '#fff', padding: 15, borderRadius: 5, borderWidth: 1, borderColor: '#202225' },
-    button: { backgroundColor: '#5865F2', padding: 15, borderRadius: 5, alignItems: 'center', marginTop: 10 },
-    buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-    linkButton: { marginTop: 20, alignItems: 'center' },
-    linkText: { color: '#00aff4' }
+    subtitle: { color: '#c5c7ce', fontSize: 13, marginBottom: 13 },
+    label: { color: '#c5c7ce', fontSize: 10, fontWeight: '700', marginBottom: 6, marginTop: 10, letterSpacing: 0.25 },
+    input: { height: 42, borderRadius: 5, paddingHorizontal: 12, backgroundColor: '#202226', borderWidth: 1, borderColor: 'rgba(0,0,0,0.22)', color: '#f2f3f5', fontSize: 14 },
+    button: { height: 42, borderRadius: 5, alignItems: 'center', justifyContent: 'center', backgroundColor: '#5965ee', shadowColor: '#6875ff', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5, marginTop: 17 },
+    buttonDisabled: { opacity: 0.7 },
+    buttonText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+    note: { color: '#9ea2ad', textAlign: 'center', fontSize: 11, marginTop: 10, lineHeight: 16 },
 });

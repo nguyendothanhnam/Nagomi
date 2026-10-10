@@ -22,8 +22,8 @@ Nagomi là ứng dụng giao tiếp cộng đồng, giúp người dùng kết n
 | Ứng dụng di động | React Native, Expo, JavaScript/TypeScript |
 | Điều hướng | Expo Router, React Navigation |
 | Giao tiếp thời gian thực | WebSocket, STOMP, SockJS; WebRTC cho thoại |
-| Backend | Java 21, Spring Boot, Spring Web, WebSocket, Spring Data JPA |
-| Cơ sở dữ liệu | MySQL |
+| Backend | Java 21, Spring Boot, Spring Web, WebSocket, Firebase Admin SDK |
+| Cơ sở dữ liệu | Cloud Firestore (Firebase) |
 | Xác thực | JWT; BCrypt để băm mật khẩu |
 
 ## Cấu trúc dự án
@@ -50,7 +50,16 @@ Có thể mở ứng dụng bằng Expo Go, Android Emulator hoặc iOS Simulato
 
 ### Backend
 
-Backend yêu cầu Java 21 và Maven. Cần cấu hình kết nối MySQL trong `Backend/src/main/resources/application.properties` trước khi khởi chạy:
+Backend yêu cầu Java 21, Maven và một dự án Firebase đã tạo cơ sở dữ liệu Cloud Firestore (bản mặc định). Đặt biến `FIREBASE_PROJECT_ID` và cấu hình Application Default Credentials trước khi khởi chạy. Trên Windows PowerShell, ví dụ:
+
+```powershell
+$env:FIREBASE_PROJECT_ID = "your-firebase-project-id"
+$env:GOOGLE_APPLICATION_CREDENTIALS = "C:\path\to\service-account.json"
+```
+
+Tạo khóa service account trong Firebase Console > Project settings > Service accounts và giữ tệp khóa ngoài mã nguồn. Có thể dùng `gcloud auth application-default login` thay cho khóa service account khi phát triển cục bộ. Firebase Admin SDK dùng Application Default Credentials để xác thực với dự án Firebase.
+
+Backend hiện ghi dữ liệu mới vào các collection Firestore như `users`, `servers`, `server_members`, `channels`, `channel_messages` và `private_messages`. Dữ liệu đang có trong MySQL không được tự động sao chép sang Firestore.
 
 ```bash
 cd Backend
@@ -62,7 +71,7 @@ Trên Windows có thể dùng `mvnw.cmd spring-boot:run`.
 ## Cấu hình
 
 - Cấu hình địa chỉ API và WebSocket của frontend trong `Frontend/src/utils/constants.js`.
-- Cấu hình kết nối cơ sở dữ liệu và các thuộc tính Spring trong `Backend/src/main/resources/application.properties`.
+- Cấu hình Firebase Project ID và các thuộc tính Spring trong `Backend/src/main/resources/application.properties`.
 - Không đưa mật khẩu, khóa JWT hoặc thông tin nhạy cảm vào mã nguồn hay tài liệu công khai.
 
 ## Trạng thái

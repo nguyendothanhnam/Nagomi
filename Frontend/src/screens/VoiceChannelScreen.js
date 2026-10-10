@@ -4,8 +4,6 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import SockJS from 'sockjs-client';
 import Stomp from 'stompjs';
-import { mediaDevices, RTCPeerConnection, RTCIceCandidate, RTCSessionDescription } from 'react-native-webrtc';
-import InCallManager from 'react-native-incall-manager';
 import {
     Alert, FlatList, Image,
     Modal,
@@ -15,9 +13,15 @@ import {
     TextInput,
     TouchableOpacity, View
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import UserService from '../services/UserService';
 import { BASE_URL_IMG, SOCKET_URL } from '../utils/constants';
+
+// These modules register native views and must not be evaluated by React Native Web.
+const webrtc = Platform.OS === 'web' ? {} : require('react-native-webrtc');
+const { mediaDevices, RTCPeerConnection, RTCIceCandidate, RTCSessionDescription } = webrtc;
+const InCallManager = Platform.OS === 'web' ? null : require('react-native-incall-manager').default;
+
 export default function VoiceChannelScreen({ route, navigation }) {
     const { channelId, channelName, currentUser } = route.params;
 
@@ -60,6 +64,10 @@ export default function VoiceChannelScreen({ route, navigation }) {
         useCallback(() => {
             isMounted.current = true;
             stopped.current = false;
+            if (Platform.OS === 'web') {
+                setConnectionStatus('UNSUPPORTED');
+                return () => { isMounted.current = false; };
+            }
             console.log("Đã vào kênh thoại:", channelName);
             Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true, staysActiveInBackground: true, shouldDuckAndroid: true }).catch(() => {});
             loadChannelMusic();
@@ -268,7 +276,7 @@ export default function VoiceChannelScreen({ route, navigation }) {
         pendingIceCandidates.current.clear();
         localStream.current?.getTracks().forEach(track => track.stop());
         localStream.current = null;
-        try { InCallManager.stop(); } catch (_) { }
+        try { InCallManager?.stop(); } catch (_) { }
         Audio.setAudioModeAsync({ allowsRecordingIOS: false, staysActiveInBackground: false, shouldDuckAndroid: false }).catch(() => {});
     };
 

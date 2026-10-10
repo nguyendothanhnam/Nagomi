@@ -17,7 +17,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import UserService from '../services/UserService';
 import Avatar from './Avatar';
 
@@ -168,7 +168,7 @@ export default function FriendList({ navigation }) {
     const handleChat = (friend) => {
         if (!currentUser) return;
         navigation.navigate('Chat', {
-            myId: currentUser.id, friendId: friend.id, friendUsername: friend.username
+            myId: currentUser.id, friendId: friend.id, friendUsername: friend.username, friendAvatarUrl: friend.avatarUrl
         });
     };
 
@@ -454,13 +454,13 @@ export default function FriendList({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#36393f' },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#202225' },
+    container: { flex: 1, backgroundColor: '#202124' },
+    header: { minHeight: 54, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#151619', backgroundColor: '#202124' },
     headerTitle: { color: 'white', fontSize: 16, fontWeight: 'bold' },
     iconButton: { padding: 5, marginLeft: 10 },
 
-    friendItem: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#2f3136' },
-    friendName: { color: '#dcddde', fontSize: 16, fontWeight: '500' },
+    friendItem: { flexDirection: 'row', alignItems: 'center', padding: 13, borderBottomWidth: 1, borderBottomColor: '#35363b', backgroundColor: '#292a2f', marginHorizontal: 12, marginBottom: 5, borderRadius: 9 },
+    friendName: { color: '#f0f1f3', fontSize: 15, fontWeight: '600' },
     friendStatus: { flexDirection: 'row', alignItems: 'center', color: '#72767d', fontSize: 12 },
     statusIndicator: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
     onlineStatus: { backgroundColor: '#3ba55d' },
@@ -473,11 +473,11 @@ const styles = StyleSheet.create({
 
     // 👇 STYLES CHO MODAL CENTER (THÊM BẠN, LỜI MỜI)
     centerModalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.8)' },
-    centerModalView: { width: '90%', backgroundColor: '#36393f', borderRadius: 10, padding: 20, alignItems: 'center' },
+    centerModalView: { width: '90%', backgroundColor: '#222327', borderColor: '#4a4b52', borderWidth: 1, borderRadius: 10, padding: 20, alignItems: 'center' },
 
     // 👇 STYLES CHO ACTION SHEET (MENU 3 CHẤM DƯỚI ĐÁY)
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    actionSheetContainer: { backgroundColor: '#2f3136', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 },
+    actionSheetContainer: { backgroundColor: '#222327', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 },
     actionSheetTitle: { color: 'white', fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
     actionGroup: { backgroundColor: '#36393f', borderRadius: 10, overflow: 'hidden' },
     actionBtnRow: { flexDirection: 'row', alignItems: 'center', padding: 15, justifyContent: 'center' },
@@ -515,16 +515,14 @@ const styles = StyleSheet.create({
     messageButton: { backgroundColor: '#5865F2', flexDirection: 'row', width: '100%', padding: 15, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
     messageButtonText: { color: 'white', fontWeight: 'bold', marginLeft: 10, fontSize: 16 },
     closeProfileBtn: { marginTop: 20, padding: 10 },
-    searchContainer: {
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-        backgroundColor: '#36393f',
-    },
+    searchContainer: { paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#202124' },
     searchBar: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#202225', // Màu nền tối hơn đúng chất Discord
-        borderRadius: 5,
+        backgroundColor: '#1c1d20',
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: '#4a4b52',
         paddingHorizontal: 10,
         height: 35,
     },

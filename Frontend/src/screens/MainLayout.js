@@ -19,7 +19,7 @@ import axios from 'axios';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import SockJS from 'sockjs-client';
 import Stomp from 'stompjs';
 import Avatar from '../components/Avatar';
@@ -711,10 +711,10 @@ export default function MainLayout({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#202225' },
+    container: { flex: 1, backgroundColor: '#202124' },
 
     // Sidebar
-    sidebar: { width: 72, backgroundColor: '#202225', alignItems: 'center', paddingTop: 10, justifyContent: 'space-between', paddingBottom: 10 },
+    sidebar: { width: 72, backgroundColor: '#1c1d20', alignItems: 'center', paddingTop: 10, justifyContent: 'space-between', paddingBottom: 10 },
     divider: { width: 32, height: 2, backgroundColor: '#36393f', marginBottom: 10 },
     serverBtn: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center', marginBottom: 10, borderRadius: 24, overflow: 'hidden' },
     selectedServerBtn: { borderColor: 'white', borderWidth: 2, borderRadius: 16 },
@@ -725,8 +725,8 @@ const styles = StyleSheet.create({
     editAvatarIcon: { position: 'absolute', right: -2, bottom: -2, backgroundColor: '#5865F2', borderRadius: 10, width: 16, height: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#202225' },
 
     // Content
-    contentArea: { flex: 1, backgroundColor: '#2f3136', borderTopLeftRadius: 10, overflow: 'hidden' },
-    serverHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderBottomColor: '#202225', height: 60, alignItems: 'center' },
+    contentArea: { flex: 1, backgroundColor: '#202124', overflow: 'hidden' },
+    serverHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderBottomColor: '#35363b', height: 60, alignItems: 'center', backgroundColor: '#242529' },
     serverTitle: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 
     categoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5, marginTop: 10, paddingRight: 5 },
