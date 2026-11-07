@@ -43,10 +43,49 @@ Frontend chứa các màn hình đăng nhập, đăng ký, hồ sơ, bạn bè, 
 ```bash
 cd Frontend
 npm install
-npx expo start
+npm run start:go
 ```
 
-Có thể mở ứng dụng bằng Expo Go, Android Emulator hoặc iOS Simulator tùy cấu hình môi trường.
+Frontend dùng Expo SDK 58. Để chạy trên Android thật, cài Expo Go hỗ trợ SDK 58, kết nối cùng Wi-Fi với máy tính rồi mở Expo Go để quét QR. Lệnh `npm run start:go` chọn Expo Go và cố định cổng Metro ở `8081`; không mở đường dẫn `/_expo/loading` cũ trong trình duyệt.
+
+Expo Go dùng được các màn hình đăng nhập, nhắn tin và tin nhắn thoại. Trên Android/iOS, gọi thoại/video WebRTC cần development build riêng có các module native tương ứng. Sau khi nâng SDK, cần dựng lại development build; thư mục native `Frontend/android` cũ không được dùng nguyên trạng cho SDK mới.
+
+### Kênh thoại và camera trên web
+
+Khi Metro đang chạy, nhấn `w` để mở web, hoặc dùng `npm run web`. Trên laptop, truy cập bằng `http://localhost:8081` và cho phép micro. Nút camera sẽ yêu cầu quyền camera khi được bấm. Web dùng WebRTC của trình duyệt và signaling STOMP cùng backend, không cần APK. Nếu trình duyệt chặn tự phát âm thanh, bấm nút "Bấm để nghe âm thanh cuộc gọi" trong kênh.
+
+Để thử giữa web và điện thoại, dùng hai tài khoản khác nhau, vào cùng một kênh; điện thoại mở app Nagomi development build. Trình duyệt cần secure context (`localhost` hoặc HTTPS) để dùng micro/camera; địa chỉ LAN dạng HTTP thường không đáp ứng điều kiện này. Cả hai phía phải truy cập được backend cổng `8080`. Khi triển khai web bằng HTTPS, backend và WebSocket cũng cần địa chỉ HTTPS/WSS phù hợp. Cấu hình hiện chỉ có STUN; gọi qua các mạng khác nhau có thể cần TURN. Chia sẻ màn hình trong kênh nhóm chưa được triển khai.
+
+### Development build trên điện thoại Android thật
+
+`Frontend/eas.json` có profile `development` tạo APK riêng chứa `expo-dev-client`. Chạy trong thư mục `Frontend`:
+
+```powershell
+npx eas-cli@latest login
+npx eas-cli@latest build --platform android --profile development
+```
+
+EAS sẽ yêu cầu liên kết/tạo dự án Expo và cấu hình khóa ký nếu đây là lần build đầu. Sau khi build thành công, tải APK từ trang kết quả trên điện thoại và cài app Nagomi. Đóng Metro cũ, chạy `npm run start:dev` rồi mở bằng app Nagomi vừa cài, không mở bằng Expo Go. Chỉ đổi chế độ Metro sang dev-client không tự tạo hoặc cài APK.
+
+Kênh thoại trên Expo Go hiện là giao diện xem trước: chỉ hiển thị avatar của bạn, không tham gia phòng thật và không có âm thanh. Kênh thoại trên development build và trình duyệt hỗ trợ WebRTC có luồng micro/camera; trạng thái bật/tắt được đồng bộ qua STOMP. Web không có API media phù hợp sẽ hiển thị hướng dẫn dùng localhost/HTTPS. Màn hình `VideoCall` riêng dành cho gọi video 1-1. Cấu hình APK chưa thay thế việc kiểm tra build native thành công và thử bằng hai tài khoản trên hai thiết bị.
+
+### Windows Firewall khi thử bằng điện thoại
+
+Giữ tường lửa bật. Nếu dùng Wi-Fi nhà hoặc mạng tin cậy, mở **PowerShell bằng Run as administrator** và chạy một lần. Đổi `Wi-Fi` nếu card mạng trên máy có tên khác:
+
+```powershell
+Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private
+
+if (-not (Get-NetFirewallRule -Name "Nagomi-Dev-LAN" -ErrorAction SilentlyContinue)) {
+    New-NetFirewallRule -Name "Nagomi-Dev-LAN" -DisplayName "Nagomi - Metro va Backend trong Wi-Fi" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8080,8081 -Profile Private -InterfaceAlias "Wi-Fi" -RemoteAddress LocalSubnet
+}
+
+Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True
+```
+
+Quy tắc chỉ cho các thiết bị cùng subnet truy cập cổng backend `8080` và Metro `8081` trên card Wi-Fi ở chế độ Private. Không chuyển Wi-Fi công cộng/không tin cậy thành Private; trong trường hợp đó có thể thử `npx expo start --go --tunnel` để tải app, nhưng tunnel Metro không cung cấp đường truy cập backend.
+
+Khi Metro đang chạy, mở `http://<IP-Wi-Fi-may-tinh>:8081/status` trên điện thoại; kết quả đúng là `packager-status:running`. IP backend trong `Frontend/src/utils/constants.js` phải khớp IP Wi-Fi hiện tại. Để gỡ quy tắc khi không cần nữa, dùng `Remove-NetFirewallRule -Name "Nagomi-Dev-LAN"` trong PowerShell quản trị.
 
 ### Backend
 

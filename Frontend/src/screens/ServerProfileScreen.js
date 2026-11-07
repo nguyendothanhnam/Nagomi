@@ -10,7 +10,7 @@ import Avatar from '../components/Avatar';
 import MemberSelectionModal from '../components/MemberSelectionModal'; // 👈 IMPORT MODAL MỚI
 import UserService from '../services/UserService';
 import SockJS from 'sockjs-client';
-import Stomp from 'stompjs';
+import { Stomp } from 'stompjs/lib/stomp';
 import { SOCKET_URL } from '../utils/constants';
 
 const uniqueMembers = (items = []) => {

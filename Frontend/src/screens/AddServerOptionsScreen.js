@@ -1,4 +1,5 @@
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function AddServerOptionsScreen({ navigation, route }) {
@@ -18,20 +19,20 @@ export default function AddServerOptionsScreen({ navigation, route }) {
     };
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} hitSlop={8} accessibilityRole="button" accessibilityLabel="Quay lại">
                     <Ionicons name="arrow-back" size={24} color="#dcddde" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Thêm Server</Text>
-                <View style={{ width: 30 }} />
+                <View style={{ width: 44 }} />
             </View>
 
-            <View style={styles.content}>
+            <ScrollView contentContainerStyle={styles.content}>
                 <Text style={styles.contentTitle}>Tạo Server của bạn trong tích tắc</Text>
 
                 {/* OPTION 1: TẠO NHÓM */}
-                <TouchableOpacity style={styles.optionButton} onPress={handleSelectCreateServer}>
+                <TouchableOpacity style={styles.optionButton} onPress={handleSelectCreateServer} accessibilityRole="button" accessibilityLabel="Tạo nhóm của riêng tôi">
                     <View style={styles.optionIconContainer}>
                         <Ionicons name="add-circle" size={30} color="#5865F2" />
                     </View>
@@ -42,7 +43,7 @@ export default function AddServerOptionsScreen({ navigation, route }) {
                 </TouchableOpacity>
 
                 {/* OPTION 2: THAM GIA NHÓM (Join Server) */}
-                <TouchableOpacity style={styles.optionButton} onPress={handleSelectJoinServer}>
+                <TouchableOpacity style={styles.optionButton} onPress={handleSelectJoinServer} accessibilityRole="button" accessibilityLabel="Tham gia nhóm">
                     <View style={styles.optionIconContainer}>
                         <Ionicons name="compass" size={30} color="#3ba55d" />
                     </View>
@@ -51,18 +52,18 @@ export default function AddServerOptionsScreen({ navigation, route }) {
                         <Text style={styles.optionSubtitle}>Tham gia server bằng link mời.</Text>
                     </View>
                 </TouchableOpacity>
-            </View>
+            </ScrollView>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#2f3136' },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, backgroundColor: '#36393f', borderBottomWidth: 1, borderBottomColor: '#202225' },
-    backButton: { padding: 5 },
-    headerTitle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#36393f', borderBottomWidth: 1, borderBottomColor: '#202225' },
+    backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    headerTitle: { flex: 1, textAlign: 'center', color: 'white', fontSize: 18, fontWeight: 'bold' },
 
-    content: { padding: 20 },
+    content: { padding: 20, paddingBottom: 32 },
     contentTitle: { color: '#b9bbbe', fontSize: 14, marginBottom: 20, textAlign: 'center' },
 
     optionButton: {

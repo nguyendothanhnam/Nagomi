@@ -21,7 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import SockJS from 'sockjs-client';
-import Stomp from 'stompjs';
+import { Stomp } from 'stompjs/lib/stomp';
 import Avatar from '../components/Avatar';
 import FriendList from '../components/FriendList';
 import UserService from '../services/UserService';
@@ -33,9 +33,20 @@ export default function MainLayout({ navigation, route }) {
     const [selectedServer, setSelectedServer] = useState(null);
     const [channels, setChannels] = useState([]);
     const [currentUser, setCurrentUser] = useState(null);
+    const currentUserRef = useRef(null);
+    const sessionExpiredRef = useRef(false);
     const [isLoading, setIsLoading] = useState(true);
 
     const stompClient = useRef(null);
+    const statusSocketActive = useRef(false);
+    const statusSocketConnecting = useRef(false);
+    const statusSocketRetryTimer = useRef(null);
+    const statusSocketRetryCount = useRef(0);
+    const [statusSocketState, setStatusSocketState] = useState('CONNECTING');
+    const callSubscription = useRef(null);
+    const incomingCallRef = useRef(null);
+    const incomingCallTimer = useRef(null);
+    const [incomingCall, setIncomingCall] = useState(null);
     // 👇 Biến ref cho AppState (Trạng thái ứng dụng: active/background)
     const appState = useRef(AppState.currentState);
     // Modal States
@@ -93,14 +104,16 @@ export default function MainLayout({ navigation, route }) {
     );
     // 1. Khởi tạo
     useEffect(() => {
+        statusSocketActive.current = true;
         const init = async () => {
             try {
                 // const token = await AsyncStorage.getItem('userToken');
                 const userId = await AsyncStorage.getItem('userId');
                 const username = await AsyncStorage.getItem('username');
                 const avatarUrl = await AsyncStorage.getItem('avatarUrl');
+                if (!statusSocketActive.current) return;
                 if (userId) {
-
+                    currentUserRef.current = { id: userId, username, avatarUrl };
                     setCurrentUser({ id: userId, username, avatarUrl });
                     connectStatusSocket(userId);
                     fetchInitialVoiceStatus();
@@ -114,7 +127,8 @@ export default function MainLayout({ navigation, route }) {
         init();
         const subscription = AppState.addEventListener('change', nextAppState => {
             if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
-                refreshStatus('ONLINE');
+                if (stompClient.current?.connected) refreshStatus('ONLINE');
+                else if (currentUserRef.current) connectStatusSocket(currentUserRef.current.id);
             } else if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
                 refreshStatus('OFFLINE');
             }
@@ -122,8 +136,21 @@ export default function MainLayout({ navigation, route }) {
         });
 
         return () => {
+            statusSocketActive.current = false;
+            if (statusSocketRetryTimer.current) clearTimeout(statusSocketRetryTimer.current);
+            statusSocketRetryTimer.current = null;
+            statusSocketConnecting.current = false;
             refreshStatus('OFFLINE');
-            if (stompClient.current) stompClient.current.disconnect();
+            if (incomingCallTimer.current) clearTimeout(incomingCallTimer.current);
+            try { callSubscription.current?.unsubscribe(); } catch (_) { }
+            const client = stompClient.current;
+            if (global.stompClient === client) global.stompClient = null;
+            stompClient.current = null;
+            try {
+                if (client?.connected) client.disconnect();
+                else client?.ws?.close();
+            } catch (_) { }
+            if (global.activeVideoCall) global.activeVideoCall = null;
             subscription.remove();
         };
 
@@ -142,9 +169,23 @@ export default function MainLayout({ navigation, route }) {
     }, [selectedServer]);
     // Hàm phụ cập nhật nhanh status
     const refreshStatus = async (status) => {
-        const userId = await AsyncStorage.getItem('userId');
-        if (userId) {
-            UserService.updateStatus(userId, status);
+        if (sessionExpiredRef.current) return;
+        try {
+            const userId = await AsyncStorage.getItem('userId');
+            if (userId) await UserService.updateStatus(userId, status);
+        } catch (error) {
+            if (error.response?.status === 401 && !sessionExpiredRef.current) {
+                sessionExpiredRef.current = true;
+                // Bỏ qua phản hồi muộn của phiên cũ nếu người dùng đã đăng nhập lại.
+                if (await UserService.getToken() !== error.requestToken) {
+                    sessionExpiredRef.current = false;
+                    return;
+                }
+                await AsyncStorage.multiRemove(['userToken', 'userId', 'username', 'avatarUrl']);
+                navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+            } else if (error.response?.status !== 401) {
+                console.error('Lỗi cập nhật trạng thái:', error);
+            }
         }
     };
     // const connectStatusSocket = () => {
@@ -160,13 +201,38 @@ export default function MainLayout({ navigation, route }) {
     //         });
     //     });
     // };
+    const scheduleStatusSocketReconnect = (userId) => {
+        if (!statusSocketActive.current || sessionExpiredRef.current || statusSocketRetryTimer.current) return;
+        // Khi app trở lại foreground, AppState sẽ kết nối lại.
+        if (appState.current !== 'active') return;
+        const delay = Math.min(1000 * (2 ** statusSocketRetryCount.current), 15000);
+        statusSocketRetryCount.current += 1;
+        statusSocketRetryTimer.current = setTimeout(() => {
+            statusSocketRetryTimer.current = null;
+            connectStatusSocket(userId);
+        }, delay);
+    };
+
     const connectStatusSocket = (userId) => { // 👈 Thêm tham số userId
+        if (!statusSocketActive.current || sessionExpiredRef.current || statusSocketConnecting.current || stompClient.current?.connected) return;
+        if (statusSocketRetryTimer.current) clearTimeout(statusSocketRetryTimer.current);
+        statusSocketRetryTimer.current = null;
+        statusSocketConnecting.current = true;
+        setStatusSocketState(statusSocketRetryCount.current ? 'RECONNECTING' : 'CONNECTING');
+        try {
         const socket = new SockJS(SOCKET_URL);
         const client = Stomp.over(socket); // Tạo biến tạm
         stompClient.current = client;
         stompClient.current.debug = null;
 
         stompClient.current.connect({}, () => {
+            if (!statusSocketActive.current || stompClient.current !== client) {
+                client.disconnect();
+                return;
+            }
+            statusSocketConnecting.current = false;
+            statusSocketRetryCount.current = 0;
+            setStatusSocketState('CONNECTED');
             global.stompClient = client;
             // 1. Đăng ký lắng nghe TRƯỚC
             stompClient.current.subscribe('/topic/status', (msg) => {
@@ -183,13 +249,109 @@ export default function MainLayout({ navigation, route }) {
                     [data.channelId]: data.members // Cập nhật danh sách người dùng cho channelId tương ứng
                 }));
             });
+            callSubscription.current = client.subscribe(`/topic/call.${userId}`, message => {
+                try {
+                    const signal = JSON.parse(message.body);
+                    if (signal.type === 'CALL_REQUEST') handleIncomingCall(signal, userId);
+                    else if (signal.type === 'CALL_END' && String(incomingCallRef.current?.fromUserId) === String(signal.fromUserId)) {
+                        clearIncomingCall();
+                    }
+                } catch (error) {
+                    console.log('Lỗi nhận tín hiệu cuộc gọi:', error.message);
+                }
+            });
             // 2. Sau khi đã lắng nghe thành công, mới gọi API báo "Tôi đã ONLINE"
             if (userId) {
                 console.log("Socket connected! Sending ONLINE status...");
-                UserService.updateStatus(userId, 'ONLINE');
+                refreshStatus('ONLINE');
             }
 
-        }, (e) => console.error("Socket error:", e));
+        }, (e) => {
+            if (!statusSocketActive.current || stompClient.current !== client) return;
+            statusSocketConnecting.current = false;
+            stompClient.current = null;
+            callSubscription.current = null;
+            if (global.stompClient === client) global.stompClient = null;
+            try { client.ws.close(); } catch (_) { }
+            setStatusSocketState('RECONNECTING');
+            console.warn('Mất kết nối socket, sẽ thử lại:', e);
+            scheduleStatusSocketReconnect(userId);
+        });
+        } catch (error) {
+            statusSocketConnecting.current = false;
+            stompClient.current = null;
+            setStatusSocketState('RECONNECTING');
+            console.warn('Không thể mở socket, sẽ thử lại:', error.message);
+            scheduleStatusSocketReconnect(userId);
+        }
+    };
+
+    const sendCallResponse = (type, toUserId, reason = null) => {
+        const user = currentUserRef.current;
+        if (!stompClient.current?.connected || !user) return;
+        stompClient.current.send('/app/call.signal', {}, JSON.stringify({
+            type,
+            fromUserId: user.id,
+            toUserId,
+            fromUsername: user.username,
+            fromAvatarUrl: user.avatarUrl,
+            ...(reason ? { reason } : {}),
+        }));
+    };
+
+    const clearIncomingCall = () => {
+        if (incomingCallTimer.current) clearTimeout(incomingCallTimer.current);
+        incomingCallTimer.current = null;
+        incomingCallRef.current = null;
+        setIncomingCall(null);
+        if (global.activeVideoCall?.status === 'incoming') global.activeVideoCall = null;
+    };
+
+    const handleIncomingCall = (signal, userId) => {
+        if (String(signal.toUserId) !== String(userId)) return;
+        if (global.activeVideoCall || global.inVoiceChannel || incomingCallRef.current) {
+            const reason = global.inVoiceChannel ? 'Đang ở trong kênh thoại.' : 'Người dùng đang bận cuộc gọi khác.';
+            sendCallResponse('CALL_REJECT', signal.fromUserId, reason);
+            return;
+        }
+        incomingCallRef.current = signal;
+        global.activeVideoCall = { friendId: signal.fromUserId, status: 'incoming' };
+        setIncomingCall(signal);
+        incomingCallTimer.current = setTimeout(() => {
+            if (incomingCallRef.current === signal) {
+                sendCallResponse('CALL_REJECT', signal.fromUserId, 'Không trả lời sau 30 giây.');
+                clearIncomingCall();
+            }
+        }, 30000);
+    };
+
+    const rejectIncomingCall = () => {
+        const signal = incomingCallRef.current;
+        if (signal) sendCallResponse('CALL_REJECT', signal.fromUserId, 'Cuộc gọi bị từ chối.');
+        clearIncomingCall();
+    };
+
+    const acceptIncomingCall = () => {
+        const signal = incomingCallRef.current;
+        if (!signal || !currentUser) return;
+        if (global.inVoiceChannel) {
+            sendCallResponse('CALL_REJECT', signal.fromUserId, 'Bạn đang ở trong kênh thoại.');
+            clearIncomingCall();
+            return;
+        }
+        if (incomingCallTimer.current) clearTimeout(incomingCallTimer.current);
+        incomingCallTimer.current = null;
+        global.activeVideoCall = { friendId: signal.fromUserId, status: 'active' };
+        setIncomingCall(null);
+        incomingCallRef.current = null;
+        navigation.navigate('VideoCall', {
+            myId: currentUser.id,
+            myUsername: currentUser.username,
+            friendId: signal.fromUserId,
+            friendUsername: signal.fromUsername,
+            friendAvatarUrl: signal.fromAvatarUrl,
+            isCaller: false,
+        });
     };
     const handleGetInviteLink = async () => {
         if (!selectedServer) return;
@@ -475,6 +637,9 @@ export default function MainLayout({ navigation, route }) {
 
     return (
         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            {statusSocketState !== 'CONNECTED' && <View style={{ backgroundColor: '#3b354b', paddingHorizontal: 14, paddingVertical: 9 }}>
+                <Text style={{ color: '#e1dcf2', fontSize: 12 }}>{statusSocketState === 'CONNECTING' ? 'Đang kết nối thời gian thực...' : 'Mất kết nối thời gian thực · Đang thử kết nối lại...'}</Text>
+            </View>}
             <View style={{ flex: 1, flexDirection: 'row' }}>
 
                 {/* --- SIDEBAR TRÁI --- */}
@@ -669,6 +834,30 @@ export default function MainLayout({ navigation, route }) {
                     </View>
                 </View>
             </Modal> */}
+
+            {/* MODAL HIỂN THỊ LINK MỜI */}
+            <Modal transparent visible={!!incomingCall} animationType="fade" onRequestClose={rejectIncomingCall}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalView}>
+                        <Text style={styles.modalTitle}>Cuộc gọi video đến</Text>
+                        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                            <Avatar uri={incomingCall?.fromAvatarUrl} name={incomingCall?.fromUsername} size={76} />
+                            <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginTop: 12 }}>
+                                {incomingCall?.fromUsername || 'Bạn bè'}
+                            </Text>
+                            <Text style={{ color: '#b9bbbe', marginTop: 5 }}>đang gọi video cho bạn</Text>
+                        </View>
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity onPress={rejectIncomingCall} style={styles.btnCancel}>
+                                <Text style={styles.btnText}>Từ chối</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={acceptIncomingCall} style={[styles.btnAdd, { backgroundColor: '#3ba55d' }]}>
+                                <Text style={styles.btnText}>Chấp nhận</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             {/* MODAL HIỂN THỊ LINK MỜI */}
             <Modal transparent={true} visible={inviteLink !== null} animationType="fade" onRequestClose={() => setInviteLink(null)}>

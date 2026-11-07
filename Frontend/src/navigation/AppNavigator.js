@@ -18,6 +18,7 @@ import QrLoginScannerScreen from '../screens/QrLoginScannerScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import ServerProfileScreen from '../screens/ServerProfileScreen';
 import VoiceChannelScreen from '../screens/VoiceChannelScreen';
+import VideoCallScreen from '../screens/VideoCallScreen';
 const Stack = createNativeStackNavigator();
 export default function AppNavigator() {
     const [isLoading, setIsLoading] = useState(true);
@@ -80,6 +81,7 @@ export default function AppNavigator() {
             <Stack.Screen name="AddFriend" component={AddFriendScreen} options={{ headerShown: false }} />
 
             <Stack.Screen name="VoiceChannel" component={VoiceChannelScreen} />
+            <Stack.Screen name="VideoCall" component={VideoCallScreen} options={{ headerShown: false, gestureEnabled: false }} />
 
         </Stack.Navigator>
 

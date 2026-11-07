@@ -21,7 +21,6 @@ export default function AddFriendScreen({ navigation }) {
     const [myId, setMyId] = useState(null);
     const [searchText, setSearchText] = useState('');
     const [results, setResults] = useState([]);
-    const [suggestions, setSuggestions] = useState([]);
     const [requests, setRequests] = useState([]);
     const [activeTab, setActiveTab] = useState('search');
     const [loading, setLoading] = useState(false);
@@ -52,16 +51,6 @@ export default function AddFriendScreen({ navigation }) {
     const debouncedSearch = useMemo(() => debounce(searchUsers, 400), [searchUsers]);
     useEffect(() => () => debouncedSearch.cancel(), [debouncedSearch]);
 
-    const loadSuggestions = useCallback(async () => {
-        if (!myId) return;
-        try {
-            const data = await UserService.searchUsers(myId, '');
-            setSuggestions((Array.isArray(data) ? data : []).filter(user => user.friendStatus === 'NONE').slice(0, 6));
-        } catch (error) {
-            console.error('Could not load friend suggestions:', error);
-        }
-    }, [myId]);
-
     const loadRequests = useCallback(async () => {
         if (!myId) return;
         const loader = activeTab === 'sent' ? UserService.getSentRequests : UserService.getPendingRequests;
@@ -76,9 +65,8 @@ export default function AddFriendScreen({ navigation }) {
 
     useEffect(() => {
         if (!isFocused || !myId) return;
-        loadSuggestions();
         if (activeTab === 'sent' || activeTab === 'received') loadRequests();
-    }, [activeTab, isFocused, loadRequests, loadSuggestions, myId]);
+    }, [activeTab, isFocused, loadRequests, myId]);
 
     // Keep relationship badges current while the search screen is open on another device.
     useEffect(() => {
@@ -109,7 +97,6 @@ export default function AddFriendScreen({ navigation }) {
             const result = await UserService.addFriend(myId, target.username);
             notify('Thông báo', typeof result === 'string' ? result : `Đã gửi lời mời tới ${target.username}.`);
             if (searchText.trim()) await searchUsers(searchText);
-            await loadSuggestions();
         } catch (error) {
             notify('Lỗi', error.response?.data || 'Không thể gửi lời mời.');
         }
@@ -119,7 +106,6 @@ export default function AddFriendScreen({ navigation }) {
         try {
             await UserService.acceptRequest(requestId);
             await loadRequests();
-            await loadSuggestions();
         } catch (error) {
             notify('Lỗi', error.response?.data || 'Không thể chấp nhận lời mời.');
         }
@@ -129,7 +115,6 @@ export default function AddFriendScreen({ navigation }) {
         try {
             await UserService.cancelRequest(requestId);
             await loadRequests();
-            await loadSuggestions();
         } catch (error) {
             notify('Lỗi', error.response?.data || 'Không thể hủy lời mời.');
         }
@@ -240,15 +225,6 @@ export default function AddFriendScreen({ navigation }) {
                         {!loading && !emptySearch && results.length > 0 && <View style={styles.resultsList}>{results.map(user => <View key={String(user.id)}>{renderUser({ item: user })}</View>)}</View>}
                     </View>
 
-                    {emptySearch && <>
-                        <Text style={styles.sectionHeading}>GỢI Ý KẾT BẠN</Text>
-                        {suggestions.slice(0, 3).map(user => <View key={`suggested-${user.id}`} style={styles.suggestionCard}>{renderUser({ item: user })}</View>)}
-                        {suggestions.length === 0 && <Text style={styles.hintText}>Chưa có gợi ý. Hãy tìm tên đăng nhập để kết nối nhé.</Text>}
-                        {suggestions.length > 3 && <>
-                            <Text style={[styles.sectionHeading, styles.recentHeading]}>BẠN BÈ GẦN ĐÂY</Text>
-                            {suggestions.slice(3).map(user => <View key={`recent-${user.id}`} style={styles.suggestionCard}>{renderUser({ item: user })}</View>)}
-                        </>}
-                    </>}
                 </ScrollView>
             ) : activeTab === 'blocked' ? (
                 <View style={styles.tabEmpty}><Ionicons name="shield-checkmark-outline" size={38} color="#7d8290" /><Text style={styles.emptyTitle}>Danh sách chặn đang trống</Text><Text style={styles.emptyDescription}>Người bạn chặn sẽ xuất hiện ở đây.</Text></View>
@@ -286,9 +262,6 @@ const styles = StyleSheet.create({
     emptyEmoji: { fontSize: 58, marginBottom: 8 },
     emptyTitle: { color: '#e5e6e9', fontWeight: '700', textAlign: 'center', fontSize: 14, marginTop: 5 },
     emptyDescription: { color: '#999ca5', textAlign: 'center', fontSize: 12, marginTop: 7, lineHeight: 18 },
-    sectionHeading: { color: '#a8abb4', fontWeight: '700', fontSize: 10, marginTop: 21, marginBottom: 8, paddingHorizontal: 2 },
-    recentHeading: { marginTop: 18 },
-    suggestionCard: { backgroundColor: '#292a2f', borderRadius: 9, marginBottom: 6, overflow: 'hidden' },
     userItem: { minHeight: 62, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#35363b' },
     avatarWrap: { position: 'relative' },
     onlineDot: { position: 'absolute', right: -1, bottom: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: '#4bc18a', borderWidth: 2, borderColor: '#292a2f' },
@@ -302,7 +275,6 @@ const styles = StyleSheet.create({
     acceptButton: { backgroundColor: '#399b72' },
     cancelButton: { backgroundColor: '#42444b' },
     resultsList: { marginTop: 14, borderRadius: 8, overflow: 'hidden' },
-    hintText: { color: '#999ca5', fontSize: 12, padding: 12 },
     tabEmpty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30 },
     requestEmptyList: { flexGrow: 1 },
 });
