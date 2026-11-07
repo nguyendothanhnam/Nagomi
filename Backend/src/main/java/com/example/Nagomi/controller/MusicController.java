@@ -64,7 +64,7 @@ public class MusicController {
 
     @MessageMapping("/voice.signal/{channelId}")
     public void relayVoiceSignal(@DestinationVariable Long channelId, @Payload Map<String, Object> signal) {
-        messagingTemplate.convertAndSend("/topic/voice.signal." + channelId, signal);
+        messagingTemplate.convertAndSend("/topic/voice.signal." + channelId, (Object) signal);
     }
 
     // --- LOGIC ĐIỀU KHIỂN NHẠC (ĐÃ GỘP VÀ SỬA LỖI) ---

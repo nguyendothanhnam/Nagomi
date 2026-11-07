@@ -92,8 +92,11 @@ const UserService = {
             if (userId) {
                 await UserService.updateStatus(userId, 'OFFLINE');
             }
+        } catch (e) {
+            if (e.response?.status !== 401) console.error("Lỗi đăng xuất:", e);
+        } finally {
             await AsyncStorage.multiRemove(['userToken', 'userId', 'username', 'avatarUrl']);
-        } catch (e) { console.error("Lỗi đăng xuất:", e); }
+        }
     },
 
     // 3. Bạn Bè
@@ -307,13 +310,23 @@ const UserService = {
     },
 
     updateStatus: async (userId, status) => {
+        const token = await UserService.getToken();
         try {
-            const token = await UserService.getToken();
+            if (!token) {
+                const error = new Error('Phiên đăng nhập không hợp lệ.');
+                error.response = { status: 401 };
+                throw error;
+            }
             await axios.put(`${BASE_URL}/users/${userId}/status`, null, {
                 params: { status }, // 'ONLINE' hoặc 'OFFLINE'
                 headers: { 'Authorization': `Bearer ${token}` }
             });
         } catch (error) {
+            if (error.response?.status === 401) {
+                // Giữ lại token của request để không xóa nhầm phiên vừa đăng nhập lại.
+                error.requestToken = token;
+                throw error;
+            }
             console.error("Lỗi cập nhật trạng thái:", error);
         }
     },

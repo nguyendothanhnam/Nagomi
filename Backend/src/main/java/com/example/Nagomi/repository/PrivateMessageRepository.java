@@ -1,15 +1,24 @@
 package com.example.Nagomi.repository;
 
 import com.example.Nagomi.model.PrivateMessage;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.cloud.firestore.Firestore;
+import org.springframework.stereotype.Repository;
 
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 
-public interface PrivateMessageRepository extends JpaRepository<PrivateMessage, Long> {
-    // Tìm tin nhắn giữa 2 người (A gửi B hoặc B gửi A)
-    // Tìm tin nhắn 2 chiều (A gửi B HOẶC B gửi A), sắp xếp theo thời gian
-    @Query("SELECT m FROM PrivateMessage m WHERE (m.senderId = :u1 AND m.receiverId = :u2) OR (m.senderId = :u2 AND m.receiverId = :u1) ORDER BY m.id ASC")
-    List<PrivateMessage> findChatHistory(@Param("u1") Long u1, @Param("u2") Long u2);
+@Repository
+public class PrivateMessageRepository extends FirestoreRepository<PrivateMessage> {
+    public PrivateMessageRepository(Firestore firestore, ObjectMapper mapper) {
+        super(firestore, mapper, "private_messages", PrivateMessage.class, PrivateMessage::getId, PrivateMessage::setId);
+    }
+
+    public List<PrivateMessage> findChatHistory(Long user1, Long user2) {
+        var messages = new LinkedHashMap<Long, PrivateMessage>();
+        findWhere("senderId", user1).stream().filter(m -> user2.equals(m.getReceiverId())).forEach(m -> messages.put(m.getId(), m));
+        findWhere("senderId", user2).stream().filter(m -> user1.equals(m.getReceiverId())).forEach(m -> messages.put(m.getId(), m));
+        return messages.values().stream().sorted(Comparator.comparing(PrivateMessage::getId)).toList();
+    }
 }

@@ -14,9 +14,11 @@ import JoinServerScreen from '../screens/JoinServerScreen';
 import LoginScreen from '../screens/LoginScreen';
 import MainLayout from '../screens/MainLayout';
 import ProfileScreen from '../screens/ProfileScreen';
+import QrLoginScannerScreen from '../screens/QrLoginScannerScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import ServerProfileScreen from '../screens/ServerProfileScreen';
 import VoiceChannelScreen from '../screens/VoiceChannelScreen';
+import VideoCallScreen from '../screens/VideoCallScreen';
 const Stack = createNativeStackNavigator();
 export default function AppNavigator() {
     const [isLoading, setIsLoading] = useState(true);
@@ -56,12 +58,18 @@ export default function AppNavigator() {
         );
     }
     return (
-        <Stack.Navigator initialRouteName={initialRoute}>
+        <Stack.Navigator initialRouteName={initialRoute} screenOptions={{
+            headerStyle: { backgroundColor: '#202124' },
+            headerTintColor: '#f4f4f5',
+            headerTitleStyle: { color: '#f4f4f5', fontWeight: '600' },
+            contentStyle: { backgroundColor: '#202124' },
+        }}>
             <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Register" component={RegisterScreen} options={{ headerShown: false }} />
             {/* Màn hình chính (Sidebar + Channel) */}
             <Stack.Screen name="Main" component={MainLayout} options={{ headerShown: false }} />
             <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="QrLoginScanner" component={QrLoginScannerScreen} options={{ headerShown: false, presentation: 'modal' }} />
             <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ServerProfile" component={ServerProfileScreen} options={{ headerShown: false }} />
             {/* Màn hình Chat */}
@@ -70,9 +78,10 @@ export default function AppNavigator() {
             <Stack.Screen name="AddServerOptions" component={AddServerOptionsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="JoinServer" component={JoinServerScreen} options={{ headerShown: false }} />
 
-            <Stack.Screen name="AddFriend" component={AddFriendScreen} options={{ title: 'Thêm bạn bè' }} />
+            <Stack.Screen name="AddFriend" component={AddFriendScreen} options={{ headerShown: false }} />
 
             <Stack.Screen name="VoiceChannel" component={VoiceChannelScreen} />
+            <Stack.Screen name="VideoCall" component={VideoCallScreen} options={{ headerShown: false, gestureEnabled: false }} />
 
         </Stack.Navigator>
 

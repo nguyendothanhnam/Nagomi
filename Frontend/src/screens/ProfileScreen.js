@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import Avatar from '../components/Avatar'; // Sử dụng Avatar component
 import UserService from '../services/UserService';
 
@@ -203,6 +203,11 @@ export default function ProfileScreen({ navigation }) {
                         <Text style={styles.actionButtonText}>ĐỔI MẬT KHẨU</Text>
                     </TouchableOpacity>
 
+                    <TouchableOpacity style={[styles.actionButton, styles.qrLoginBtn]} onPress={() => navigation.navigate('QrLoginScanner')}>
+                        <Ionicons name="qr-code-outline" size={19} color="white" style={{ marginRight: 10 }} />
+                        <Text style={styles.actionButtonText}>QUÉT MÃ ĐĂNG NHẬP</Text>
+                    </TouchableOpacity>
+
                     {/* Nút Đăng Xuất */}
                     <TouchableOpacity style={[styles.actionButton, styles.logoutBtn]} onPress={handleLogout}>
                         <Ionicons name="log-out-outline" size={20} color="white" style={{ marginRight: 10 }} />
@@ -241,5 +246,6 @@ const styles = StyleSheet.create({
 
     editBtn: { backgroundColor: '#4f545c' },
     passwordBtn: { backgroundColor: '#4f545c' },
+    qrLoginBtn: { backgroundColor: '#5965ee' },
     logoutBtn: { backgroundColor: '#ed4245' }
 });
