@@ -32,6 +32,11 @@ public class VoiceService {
         }
     }
 
+    public synchronized boolean isInVoiceChannel(Long userId) {
+        return voiceChannels.values().stream().anyMatch(members -> members.stream()
+                .anyMatch(member -> userId.equals(member.getId())));
+    }
+
     // 3. Lấy danh sách thành viên hiện tại trong một kênh
     public List<User> getMembers(Long channelId) {
         return voiceChannels.getOrDefault(channelId, new ArrayList<>());

@@ -12,4 +12,5 @@ public class MusicSyncMessage {
     private String title;
     private long position;  // Quan trọng: Để người mới nhảy đúng giây
     private boolean isPlaying;
+    private boolean loop;
 }

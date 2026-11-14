@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import com.example.Nagomi.util.JwtUtils;
+import com.example.Nagomi.service.VoiceService;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -31,6 +32,8 @@ public class UserController {
     private UserRepository userRepo;
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
+    @Autowired
+    private VoiceService voiceService;
     // API lấy danh sách bạn bè
     // URL: /api/users/friends/{userId}
     @GetMapping("/friends/{userId}")
@@ -43,13 +46,16 @@ public class UserController {
 
         // 2. Lọc ra người kia là ai
         for (FriendRequest req : friendships) {
-            if (req.getSender().getId().equals(userId)) {
-                // Nếu mình là người gửi -> Bạn là người nhận
-                friends.add(req.getReceiver());
-            } else {
-                // Nếu mình là người nhận -> Bạn là người gửi
-                friends.add(req.getSender());
-            }
+            if (req.getSender() == null || req.getReceiver() == null) continue;
+            User friend = userId.equals(req.getSender().getId()) ? req.getReceiver() : req.getSender();
+            if (friend.getId() == null) continue;
+            // Quan hệ bạn bè chỉ là bản sao; trạng thái hiện tại nằm trong users.
+            userRepo.findById(friend.getId()).ifPresent(latest -> {
+                friend.setStatus(voiceService.isInVoiceChannel(friend.getId()) ? "ONLINE" : latest.getStatus());
+                friend.setUsername(latest.getUsername());
+                friend.setAvatarUrl(latest.getAvatarUrl());
+                friends.add(friend);
+            });
         }
 
         return friends; // Trả về danh sách User (bạn bè)
@@ -70,20 +76,23 @@ public class UserController {
             return ResponseEntity.status(401).body("Phiên đăng nhập không hợp lệ.");
         if (!"ONLINE".equals(status) && !"OFFLINE".equals(status))
             return ResponseEntity.badRequest().body("Trạng thái không hợp lệ.");
-        return userRepo.findById(userId).map(user -> {
-            user.setStatus(status); // Cập nhật vào DB
-            userRepo.save(user);
-            // Gửi cả ID và Status mới ra kênh công khai "/topic/status"
-            Map<String, Object> presence = new HashMap<>();
-            presence.put("id", user.getId());
-            presence.put("username", user.getUsername());
-            presence.put("avatarUrl", user.getAvatarUrl());
-            presence.put("status", user.getStatus());
-            messagingTemplate.convertAndSend("/topic/status", (Object) presence);
-
-            return ResponseEntity.ok("Đã cập nhật trạng thái: " + status);
-        }).orElse(ResponseEntity.notFound().build());
+        // Một lệnh nền đến muộn không được ghi Offline khi phiên thoại còn hoạt động.
+        synchronized (voiceService) {
+            String effectiveStatus = "OFFLINE".equals(status) && voiceService.isInVoiceChannel(userId) ? "ONLINE" : status;
+            return userRepo.findById(userId).map(user -> {
+                user.setStatus(effectiveStatus);
+                userRepo.save(user);
+                Map<String, Object> presence = new HashMap<>();
+                presence.put("id", user.getId());
+                presence.put("username", user.getUsername());
+                presence.put("avatarUrl", user.getAvatarUrl());
+                presence.put("status", user.getStatus());
+                messagingTemplate.convertAndSend("/topic/status", (Object) presence);
+                return ResponseEntity.ok("Đã cập nhật trạng thái: " + effectiveStatus);
+            }).orElse(ResponseEntity.notFound().build());
+        }
     }
+
     @PutMapping("/{userId}")
     public ResponseEntity<String> updateUserInfo(@PathVariable Long userId, @RequestBody UserUpdateRequest request) {
         // 1. Tìm User

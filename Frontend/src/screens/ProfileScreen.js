@@ -102,6 +102,7 @@ export default function ProfileScreen({ navigation }) {
     };
 
     const handleLogout = async () => {
+        global.activeVoiceSession?.leave?.();
         try {
             //BƯỚC 1 (MỚI THÊM): Báo Server là tôi OFFLINE trước
             if (currentUser && currentUser.id) {

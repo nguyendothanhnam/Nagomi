@@ -28,6 +28,22 @@ public class ChannelMusicController {
         return channelMusicRepository.save(music);
     }
 
+    @PutMapping("/{channelId}/music/{musicId}")
+    public ResponseEntity<?> updateChannelMusic(@PathVariable Long channelId, @PathVariable Long musicId,
+                                                @RequestBody ChannelMusic changes) {
+        if (changes.getTitle() == null || changes.getTitle().isBlank()
+                || changes.getUrl() == null || changes.getUrl().isBlank()) {
+            return ResponseEntity.badRequest().body("Nhập tên bài hát và nguồn âm thanh.");
+        }
+        return channelMusicRepository.findById(musicId)
+                .filter(music -> channelId.equals(music.getChannelId()))
+                .<ResponseEntity<?>>map(music -> {
+                    music.setTitle(changes.getTitle().trim());
+                    music.setUrl(changes.getUrl().trim());
+                    return ResponseEntity.ok(channelMusicRepository.save(music));
+                }).orElse(ResponseEntity.notFound().build());
+    }
+
     @DeleteMapping("/{channelId}/music/{musicId}")
     public ResponseEntity<?> deleteMusic(@PathVariable Long channelId, @PathVariable Long musicId) {
         // Kiểm tra xem bài nhạc có tồn tại không trước khi xóa
