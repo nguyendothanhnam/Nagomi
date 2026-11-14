@@ -13,4 +13,5 @@ public class MusicControlRequest {
     private String title;    // Tên bài hát
     private Long position;   // Vị trí (ms)
     private String sender;   // Người gửi lệnh
+    private Boolean loop;
 }

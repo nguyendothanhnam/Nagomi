@@ -8,6 +8,7 @@
     "scheme": "nagomi",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.anonymous.nagomi",
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "Nagomi cần dùng camera để bạn gọi video với bạn bè.",
@@ -27,7 +28,8 @@
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.WAKE_LOCK",
         "android.permission.BLUETOOTH",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.POST_NOTIFICATIONS"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -43,10 +45,13 @@
     },
     "plugins": [
       "@config-plugins/react-native-webrtc",
+      "./plugins/withMediaProjectionService",
+      "./plugins/withIOSScreenSharing",
       [
         "expo-audio",
         {
-          "microphonePermission": "Nagomi cần dùng micro để bạn gửi tin nhắn thoại và trò chuyện."
+          "microphonePermission": "Nagomi cần dùng micro để bạn gửi tin nhắn thoại và trò chuyện.",
+          "enableBackgroundPlayback": true
         }
       ],
       [

@@ -1,10 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
     Dimensions,
+    DeviceEventEmitter,
     FlatList,
     KeyboardAvoidingView,
     Modal,
@@ -84,6 +85,17 @@ const ServerInviteItem = ({ invite, onRespond }) => (
 export default function FriendList({ navigation }) {
     const [currentUser, setCurrentUser] = useState(null);
     const [friends, setFriends] = useState([]);
+    const presenceUpdates = useRef(new Map());
+    useEffect(() => {
+        const subscription = DeviceEventEmitter.addListener('nagomi:user-status', user => {
+            if (user?.id == null || !['ONLINE', 'OFFLINE'].includes(user.status)) return;
+            const key = String(user.id);
+            presenceUpdates.current.set(key, { status: user.status, receivedAt: Date.now() });
+            setFriends(previous => previous.map(friend => String(friend.id) === key
+                ? { ...friend, status: user.status } : friend));
+        });
+        return () => subscription.remove();
+    }, []);
     const [pendingRequests, setPendingRequests] = useState([]);
     const [sentRequests, setSentRequests] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -132,6 +144,7 @@ export default function FriendList({ navigation }) {
             const user = currentUser || await loadCurrentUser();
             if (user && user.id) {
                 const userId = parseInt(user.id);
+                const requestStartedAt = Date.now();
                 const [friendsData, requestsData, sentData, serverInvitesData] = await Promise.all([
                     UserService.getFriends(userId),
                     UserService.getPendingRequests(userId),
@@ -139,7 +152,11 @@ export default function FriendList({ navigation }) {
                     UserService.getServerInvites(userId)
                 ]);
                 // Cập nhật State
-                setFriends(friendsData);
+                // Không để phản hồi HTTP cũ ghi đè tín hiệu vừa nhận trong lúc tải.
+                setFriends(friendsData.map(friend => {
+                    const update = presenceUpdates.current.get(String(friend.id));
+                    return update && update.receivedAt >= requestStartedAt ? { ...friend, status: update.status } : friend;
+                }));
                 setPendingRequests(requestsData);
                 setSentRequests(sentData);
                 setServerInvites(serverInvitesData);

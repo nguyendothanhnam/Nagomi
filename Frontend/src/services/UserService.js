@@ -318,7 +318,10 @@ const UserService = {
                 throw error;
             }
             await axios.put(`${BASE_URL}/users/${userId}/status`, null, {
-                params: { status }, // 'ONLINE' hoặc 'OFFLINE'
+                // Kiểm tra lại sau await lấy token để chặn cả lệnh Offline bị trễ.
+                params: { status: status === 'OFFLINE' && (global.activeVoiceSession
+                    ? String(global.activeVoiceSession.userId) === String(userId) : global.inVoiceChannel)
+                    ? 'ONLINE' : status },
                 headers: { 'Authorization': `Bearer ${token}` }
             });
         } catch (error) {
@@ -497,6 +500,16 @@ const UserService = {
             });
             return response.data;
         } catch (error) { throw error; }
+    },
+
+    updateChannelMusic: async (channelId, musicId, musicData) => {
+        const token = await UserService.getToken();
+        const response = await axios.put(
+            BASE_URL + '/channels/' + channelId + '/music/' + musicId,
+            musicData,
+            { headers: { Authorization: 'Bearer ' + token } }
+        );
+        return response.data;
     },
 
     deleteChannelMusic: async (channelId, musicId) => {

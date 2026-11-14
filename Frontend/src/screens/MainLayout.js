@@ -3,6 +3,7 @@ import {
     ActivityIndicator,
     Alert,
     AppState,
+    DeviceEventEmitter,
     Image,
     Modal,
     ScrollView,
@@ -23,12 +24,14 @@ import { Ionicons } from '@expo/vector-icons';
 import SockJS from 'sockjs-client';
 import { Stomp } from 'stompjs/lib/stomp';
 import Avatar from '../components/Avatar';
+import { useVoiceSession } from '../components/VoiceSessionHost';
 import FriendList from '../components/FriendList';
 import UserService from '../services/UserService';
 import { BASE_URL, BASE_URL_IMG, SOCKET_URL, } from '../utils/constants';
 
 const API_URL = BASE_URL;
 export default function MainLayout({ navigation, route }) {
+    const voice = useVoiceSession();
     const [servers, setServers] = useState([]);
     const [selectedServer, setSelectedServer] = useState(null);
     const [channels, setChannels] = useState([]);
@@ -102,6 +105,14 @@ export default function MainLayout({ navigation, route }) {
             return () => { };
         }, [selectedServer]) // Thêm selectedServer vào dependency để kiểm tra
     );
+    useEffect(() => {
+        const listener = DeviceEventEmitter.addListener('NagomiServerLeft', ({ serverId }) => {
+            setServers(previous => previous.filter(server => String(server.id) !== String(serverId)));
+            setSelectedServer(previous => String(previous?.id) === String(serverId) ? null : previous);
+            setChannels([]);
+        });
+        return () => listener.remove();
+    }, []);
     // 1. Khởi tạo
     useEffect(() => {
         statusSocketActive.current = true;
@@ -130,7 +141,8 @@ export default function MainLayout({ navigation, route }) {
                 if (stompClient.current?.connected) refreshStatus('ONLINE');
                 else if (currentUserRef.current) connectStatusSocket(currentUserRef.current.id);
             } else if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
-                refreshStatus('OFFLINE');
+                // Khi đang gọi hoặc chia sẻ màn hình, chuyển app nền vẫn giữ Online.
+                if (!global.activeVoiceSession && !global.inVoiceChannel) refreshStatus('OFFLINE');
             }
             appState.current = nextAppState;
         });
@@ -140,7 +152,7 @@ export default function MainLayout({ navigation, route }) {
             if (statusSocketRetryTimer.current) clearTimeout(statusSocketRetryTimer.current);
             statusSocketRetryTimer.current = null;
             statusSocketConnecting.current = false;
-            refreshStatus('OFFLINE');
+            if (!global.activeVoiceSession && !global.inVoiceChannel) refreshStatus('OFFLINE');
             if (incomingCallTimer.current) clearTimeout(incomingCallTimer.current);
             try { callSubscription.current?.unsubscribe(); } catch (_) { }
             const client = stompClient.current;
@@ -182,6 +194,7 @@ export default function MainLayout({ navigation, route }) {
                     return;
                 }
                 await AsyncStorage.multiRemove(['userToken', 'userId', 'username', 'avatarUrl']);
+                global.activeVoiceSession?.leave?.();
                 navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
             } else if (error.response?.status !== 401) {
                 console.error('Lỗi cập nhật trạng thái:', error);
@@ -204,7 +217,7 @@ export default function MainLayout({ navigation, route }) {
     const scheduleStatusSocketReconnect = (userId) => {
         if (!statusSocketActive.current || sessionExpiredRef.current || statusSocketRetryTimer.current) return;
         // Khi app trở lại foreground, AppState sẽ kết nối lại.
-        if (appState.current !== 'active') return;
+        if (appState.current !== 'active' && !global.activeVoiceSession && !global.inVoiceChannel) return;
         const delay = Math.min(1000 * (2 ** statusSocketRetryCount.current), 15000);
         statusSocketRetryCount.current += 1;
         statusSocketRetryTimer.current = setTimeout(() => {
@@ -239,8 +252,8 @@ export default function MainLayout({ navigation, route }) {
                 const updatedUser = JSON.parse(msg.body);
                 console.log(`User ${updatedUser.username} is now ${updatedUser.status}`);
 
-                // (Tùy chọn) Cập nhật lại list bạn bè nếu cần
-                // loadServers(...) hoặc kích hoạt event nào đó
+                // Cập nhật danh sách ngay khi nhận tín hiệu trạng thái.
+                DeviceEventEmitter.emit('nagomi:user-status', updatedUser);
             });
             stompClient.current.subscribe('/topic/server.voice.status', (msg) => {
                 const data = JSON.parse(msg.body);
@@ -378,6 +391,7 @@ export default function MainLayout({ navigation, route }) {
 
             if (res.data && Array.isArray(res.data)) {
                 setServers(res.data);
+                setSelectedServer(previous => previous && !res.data.some(server => String(server.id) === String(previous.id)) ? null : previous);
             } else {
                 setServers([]);
             }
@@ -593,9 +607,11 @@ export default function MainLayout({ navigation, route }) {
         if (!currentUser) return;
 
         if (channel.type === 'VOICE') {
+            if (global.activeVoiceSession && String(global.activeVoiceSession.channelId) !== String(channel.id)) global.activeVoiceSession.leave?.();
             // 👇 ĐIỀU HƯỚNG SANG MÀN HÌNH VOICE CHANNEL
             navigation.navigate('VoiceChannel', {
                 channelId: channel.id,
+                serverId: selectedServer?.id,
                 channelName: channel.name,
                 currentUser: currentUser // Truyền thông tin user để hiện Avatar
             });
@@ -637,6 +653,15 @@ export default function MainLayout({ navigation, route }) {
 
     return (
         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            {voice?.session && <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#173526', padding: 10, gap: 12 }}>
+                <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('VoiceChannel', voice.session)} accessibilityLabel="Mở lại kênh thoại đang kết nối">
+                    <Text style={{ color: '#9fefbc', fontWeight: '600' }}>Đang kết nối · {voice.session.channelName}</Text>
+                    <Text style={{ color: '#b5bac1', fontSize: 12 }}>Bấm để trở lại kênh thoại</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => global.activeVoiceSession?.leave?.()} accessibilityLabel="Rời kênh thoại" style={{ padding: 10 }}>
+                    <Ionicons name="call" size={22} color="#ff727b" />
+                </TouchableOpacity>
+            </View>}
             {statusSocketState !== 'CONNECTED' && <View style={{ backgroundColor: '#3b354b', paddingHorizontal: 14, paddingVertical: 9 }}>
                 <Text style={{ color: '#e1dcf2', fontSize: 12 }}>{statusSocketState === 'CONNECTING' ? 'Đang kết nối thời gian thực...' : 'Mất kết nối thời gian thực · Đang thử kết nối lại...'}</Text>
             </View>}

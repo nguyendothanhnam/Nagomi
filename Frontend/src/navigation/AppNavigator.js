@@ -17,7 +17,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import QrLoginScannerScreen from '../screens/QrLoginScannerScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import ServerProfileScreen from '../screens/ServerProfileScreen';
-import VoiceChannelScreen from '../screens/VoiceChannelScreen';
+import VoiceSessionHost, { VoiceChannelRoute } from '../components/VoiceSessionHost';
 import VideoCallScreen from '../screens/VideoCallScreen';
 const Stack = createNativeStackNavigator();
 export default function AppNavigator() {
@@ -58,6 +58,7 @@ export default function AppNavigator() {
         );
     }
     return (
+        <VoiceSessionHost>
         <Stack.Navigator initialRouteName={initialRoute} screenOptions={{
             headerStyle: { backgroundColor: '#202124' },
             headerTintColor: '#f4f4f5',
@@ -80,10 +81,11 @@ export default function AppNavigator() {
 
             <Stack.Screen name="AddFriend" component={AddFriendScreen} options={{ headerShown: false }} />
 
-            <Stack.Screen name="VoiceChannel" component={VoiceChannelScreen} />
+            <Stack.Screen name="VoiceChannel" component={VoiceChannelRoute} />
             <Stack.Screen name="VideoCall" component={VideoCallScreen} options={{ headerShown: false, gestureEnabled: false }} />
 
         </Stack.Navigator>
+        </VoiceSessionHost>
 
     );
 

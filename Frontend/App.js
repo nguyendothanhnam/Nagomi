@@ -1,5 +1,6 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import 'text-encoding-polyfill';
 import AppNavigator from './src/navigation/AppNavigator';
 
@@ -10,9 +11,11 @@ if (typeof global.self === 'undefined') {
 
 export default function App() {
     return (
-        <NavigationContainer>
-            <StatusBar style="light" />
-            <AppNavigator />
-        </NavigationContainer>
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+            <NavigationContainer>
+                <StatusBar style="light" />
+                <AppNavigator />
+            </NavigationContainer>
+        </SafeAreaProvider>
     );
 }

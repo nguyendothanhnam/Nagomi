@@ -3,7 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, DeviceEventEmitter, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Avatar from '../components/Avatar';
@@ -289,30 +289,28 @@ export default function ServerProfileScreen({ route, navigation }) {
         );
     };
 
+    const [isLeavingServer, setIsLeavingServer] = useState(false);
     const handleLeaveServer = () => {
-        Alert.alert(
-            "Rời khỏi máy chủ",
-            `Bạn có chắc chắn muốn rời khỏi ${currentServer.name}? Bạn sẽ cần mã mời mới để tham gia lại.`,
-            [
-                { text: "Hủy", style: "cancel" },
-                {
-                    text: "Rời nhóm",
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            // Gọi API xử lý rời nhóm
-                            await UserService.leaveServer(currentServer.id);
-                            Alert.alert("Thành công", "Bạn đã rời khỏi máy chủ.");
-                            // Quay lại màn hình Main sau khi rời thành công
-                            navigation.navigate('Main');
-                        } catch (error) {
-                            const errorMsg = error.response?.data || "Không thể rời nhóm lúc này.";
-                            Alert.alert("Lỗi", errorMsg);
-                        }
-                    }
-                }
-            ]
-        );
+        if (isLeavingServer) return;
+        const message = 'Bạn có chắc chắn muốn rời khỏi ' + currentServer.name + '?';
+        const leave = async () => {
+            setIsLeavingServer(true);
+            try {
+                await UserService.leaveServer(currentServer.id);
+                if (String(global.activeVoiceSession?.serverId) === String(currentServer.id)) global.activeVoiceSession.leave?.();
+                DeviceEventEmitter.emit('NagomiServerLeft', { serverId: currentServer.id });
+                if (navigation.popTo) navigation.popTo('Main');
+                else navigation.navigate('Main');
+            } catch (error) {
+                const raw = error?.response?.data || error?.message || String(error);
+                const detail = raw === 'OWNER_CANNOT_LEAVE' ? 'Chủ máy chủ cần chuyển quyền hoặc giải tán máy chủ trước khi rời.' : String(raw);
+                if (Platform.OS === 'web') globalThis.alert(detail);
+                else Alert.alert('Không thể rời máy chủ', detail);
+            } finally { setIsLeavingServer(false); }
+        };
+        // Alert.alert không mở hộp xác nhận trên React Native Web.
+        if (Platform.OS === 'web') { if (globalThis.confirm(message)) leave(); }
+        else Alert.alert('Rời khỏi máy chủ', message, [{ text: 'Hủy', style: 'cancel' }, { text: 'Rời máy chủ', style: 'destructive', onPress: leave }]);
     };
     const handleDeleteServer = () => {
         Alert.alert(
@@ -418,6 +416,7 @@ export default function ServerProfileScreen({ route, navigation }) {
                     <TouchableOpacity
                         style={styles.leaveServerButton}
                         onPress={handleLeaveServer}
+                        disabled={isLeavingServer}
                     >
                         <Ionicons name="log-out-outline" size={20} color="#ed4245" style={{ marginRight: 10 }} />
                         <Text style={styles.leaveServerButtonText}>RỜI KHỎI MÁY CHỦ</Text>
